@@ -3,6 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
+function copyCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach(({ name, value, ...options }) => {
+    to.cookies.set(name, value, options);
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const { url, anonKey } = getSupabaseEnv();
 
@@ -25,7 +31,38 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  const isLoginPage = pathname === "/login";
+  const isApiRoute = pathname.startsWith("/api/");
+
+  if (!user && !isLoginPage) {
+    if (isApiRoute) {
+      const unauthorized = NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+      copyCookies(supabaseResponse, unauthorized);
+      return unauthorized;
+    }
+
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    const redirect = NextResponse.redirect(loginUrl);
+    copyCookies(supabaseResponse, redirect);
+    return redirect;
+  }
+
+  if (user && isLoginPage) {
+    const homeUrl = request.nextUrl.clone();
+    homeUrl.pathname = "/";
+    const redirect = NextResponse.redirect(homeUrl);
+    copyCookies(supabaseResponse, redirect);
+    return redirect;
+  }
 
   return supabaseResponse;
 }
