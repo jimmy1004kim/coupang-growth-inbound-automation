@@ -11,8 +11,8 @@ const createSellerAccountSchema = z.object({
   displayName: z
     .string()
     .trim()
-    .min(1, "표시명을 입력해 주세요.")
-    .max(100, "표시명은 100자 이하여야 합니다."),
+    .min(1, "쿠팡 판매자 계정을 입력해 주세요.")
+    .max(100, "쿠팡 판매자 계정은 100자 이하여야 합니다."),
   isActive: z.boolean().optional(),
   createdById: z.string().min(1),
 });

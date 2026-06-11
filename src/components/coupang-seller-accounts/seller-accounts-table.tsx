@@ -24,17 +24,20 @@ export function SellerAccountsTable({
 }) {
   if (accounts.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
-        등록된 판매자 계정이 없습니다.
-      </p>
+      <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-10 text-center">
+        <p className="text-sm text-muted-foreground">
+          등록된 판매자 계정이 없습니다.
+        </p>
+      </div>
     );
   }
 
   return (
+    <div className="overflow-hidden rounded-md border border-border bg-background">
     <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>표시명</TableHead>
+      <TableHeader className="bg-muted/40">
+        <TableRow className="hover:bg-transparent">
+          <TableHead>쿠팡 판매자 계정</TableHead>
           <TableHead>상태</TableHead>
           <TableHead>생성자</TableHead>
           <TableHead>생성일</TableHead>
@@ -55,5 +58,6 @@ export function SellerAccountsTable({
         ))}
       </TableBody>
     </Table>
+    </div>
   );
 }

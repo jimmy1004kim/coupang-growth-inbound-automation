@@ -5,13 +5,6 @@ import { useRouter } from "next/navigation";
 
 import { apiPost } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -46,49 +39,41 @@ export function AddSellerAccountForm() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>판매자 계정 추가</CardTitle>
-        <CardDescription>
-          쿠팡 Wing 판매자 계정의 표시명을 등록합니다.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="seller-display-name">표시명</FieldLabel>
-              <Input
-                id="seller-display-name"
-                type="text"
-                placeholder="예: 미즈코스 본점"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                required
-                maxLength={100}
-                disabled={loading}
-              />
-            </Field>
-            <Field orientation="horizontal">
-              <Checkbox
-                id="seller-is-active"
-                checked={isActive}
-                onCheckedChange={(checked) => setIsActive(checked === true)}
-                disabled={loading}
-              />
-              <FieldLabel htmlFor="seller-is-active">활성</FieldLabel>
-            </Field>
-            {error ? (
-              <p className="text-sm text-destructive" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <Button type="submit" disabled={loading}>
-              {loading ? "추가 중..." : "판매자 계정 추가"}
-            </Button>
-          </FieldGroup>
-        </form>
-      </CardContent>
-    </Card>
+    <form onSubmit={handleSubmit}>
+      <FieldGroup className="gap-4">
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end">
+          <Field>
+            <FieldLabel htmlFor="seller-display-name">쿠팡 판매자 계정</FieldLabel>
+            <Input
+              id="seller-display-name"
+              type="text"
+              placeholder="mizucos"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              required
+              maxLength={100}
+              disabled={loading}
+            />
+          </Field>
+          <Field orientation="horizontal" className="sm:pb-0.5">
+            <Checkbox
+              id="seller-is-active"
+              checked={isActive}
+              onCheckedChange={(checked) => setIsActive(checked === true)}
+              disabled={loading}
+            />
+            <FieldLabel htmlFor="seller-is-active">활성</FieldLabel>
+          </Field>
+          <Button type="submit" disabled={loading} className="sm:w-auto">
+            {loading ? "추가 중..." : "계정 추가"}
+          </Button>
+        </div>
+        {error ? (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </FieldGroup>
+    </form>
   );
 }
