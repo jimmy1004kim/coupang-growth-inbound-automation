@@ -30,6 +30,19 @@ import type {
 } from "@/services/shopling-sync/types";
 
 const CREATE_MANY_BATCH_SIZE = 1000;
+const INGEST_TX_BASE_MS = 30_000;
+const INGEST_TX_PER_BATCH_MS = 15_000;
+const INGEST_TX_MAX_MS = 240_000;
+const INGEST_TX_MAX_WAIT_MS = 10_000;
+
+function computeIngestTransactionTimeoutMs(rowCount: number): number {
+  const batches = Math.max(1, Math.ceil(rowCount / CREATE_MANY_BATCH_SIZE));
+
+  return Math.min(
+    INGEST_TX_BASE_MS + batches * INGEST_TX_PER_BATCH_MS,
+    INGEST_TX_MAX_MS,
+  );
+}
 
 type SyncShoplingInventoryInput = {
   uploadedById: string;
@@ -168,50 +181,62 @@ export async function syncShoplingInventory(
     buildShoplingSyncChunk(today, 0).startDt;
   const newestEndDt = formatYyyyMmDd(today);
 
+  const txTimeout = computeIngestTransactionTimeoutMs(rows.length);
+
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.shoplingInventory.deleteMany({
-        where: { snapshotDate },
-      });
-
-      const ingestionLog = await tx.ingestionLog.create({
-        data: {
-          tableName: SHOPLING_INVENTORY_TABLE,
-          snapshotDate,
-          operation: "reload",
-          rowCount: rows.length,
-          uploadedById: input.uploadedById,
-          sourceFile: "shopling-api-sync",
-        },
-      });
-
-      for (let offset = 0; offset < rows.length; offset += CREATE_MANY_BATCH_SIZE) {
-        const batch = rows.slice(offset, offset + CREATE_MANY_BATCH_SIZE);
-
-        await tx.shoplingInventory.createMany({
-          data: batch.map((row) => ({
-            ingestionId: ingestionLog.id,
-            goodsKey: row.goodsKey,
-            ptnGoodsCd: row.ptnGoodsCd,
-            productName: row.productName,
-            saleStatus: row.saleStatus,
-            goodsTp: row.goodsTp,
-            barcode: row.barcode,
-            optId: row.optId,
-            optionTitle: row.optionTitle,
-            optionValue: row.optionValue,
-            availableStock: row.availableStock,
-            realStock: row.realStock,
-            optVrtlQty: row.optVrtlQty,
-            optPrice: row.optPrice,
-            optSupplyPrice: row.optSupplyPrice,
-            optStatus: row.optStatus,
-            location: row.location,
-            snapshotDate,
-          })),
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.shoplingInventory.deleteMany({
+          where: { snapshotDate },
         });
-      }
-    });
+
+        const ingestionLog = await tx.ingestionLog.create({
+          data: {
+            tableName: SHOPLING_INVENTORY_TABLE,
+            snapshotDate,
+            operation: "reload",
+            rowCount: rows.length,
+            uploadedById: input.uploadedById,
+            sourceFile: "shopling-api-sync",
+          },
+        });
+
+        for (
+          let offset = 0;
+          offset < rows.length;
+          offset += CREATE_MANY_BATCH_SIZE
+        ) {
+          const batch = rows.slice(offset, offset + CREATE_MANY_BATCH_SIZE);
+
+          await tx.shoplingInventory.createMany({
+            data: batch.map((row) => ({
+              ingestionId: ingestionLog.id,
+              goodsKey: row.goodsKey,
+              ptnGoodsCd: row.ptnGoodsCd,
+              productName: row.productName,
+              saleStatus: row.saleStatus,
+              goodsTp: row.goodsTp,
+              barcode: row.barcode,
+              optId: row.optId,
+              optionTitle: row.optionTitle,
+              optionValue: row.optionValue,
+              availableStock: row.availableStock,
+              realStock: row.realStock,
+              optVrtlQty: row.optVrtlQty,
+              optPrice: row.optPrice,
+              optSupplyPrice: row.optSupplyPrice,
+              optStatus: row.optStatus,
+              location: row.location,
+              snapshotDate,
+            })),
+          });
+        }
+      },
+      {
+        maxWait: INGEST_TX_MAX_WAIT_MS,
+        timeout: txTimeout,
+      },
+    );
   } catch (error) {
     const message =
       error instanceof Error
