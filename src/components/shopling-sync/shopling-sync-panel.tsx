@@ -16,6 +16,7 @@ import {
 import type {
   ShoplingSyncRunResult,
   ShoplingSyncStatus,
+  ShoplingSyncStoppedReason,
 } from "@/services/shopling-sync/types";
 
 type ShoplingSyncPanelProps = {
@@ -36,6 +37,14 @@ function formatDateTime(iso: string): string {
   });
 }
 
+function formatStoppedReason(reason: ShoplingSyncStoppedReason): string {
+  if (reason === "empty_streak") {
+    return "연속 빈 청크 5회 도달";
+  }
+
+  return "최대 40청크 처리 완료";
+}
+
 export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -43,6 +52,7 @@ export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
   const [result, setResult] = useState<ShoplingSyncRunResult | null>(null);
 
   const isDisabled = !initialStatus.hasApiConfig || loading;
+  const { syncPolicy } = initialStatus;
 
   async function handleSync() {
     setError(null);
@@ -71,18 +81,22 @@ export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
         <CardHeader>
           <CardTitle>동기화 상태</CardTitle>
           <CardDescription>
-            확인용 1회 동기화 — API 1회 호출 후 당일 스냅샷으로 DB에
-            reload합니다.
+            오늘(KST)부터 3개월씩 과거로 최대 {syncPolicy.maxChunks}청크 조회 후
+            당일 스냅샷으로 DB에 reload합니다.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <dl className="grid gap-3 sm:grid-cols-2">
             <div>
-              <dt className="text-muted-foreground">조회 구간 (고정)</dt>
+              <dt className="text-muted-foreground">조회 기준</dt>
               <dd>
-                {formatYmd(initialStatus.verifyWindow.startDt)} ~{" "}
-                {formatYmd(initialStatus.verifyWindow.endDt)}
+                {syncPolicy.searchTp} · {syncPolicy.chunkMonths}개월 청크 · 최대{" "}
+                {syncPolicy.maxChunks}회
               </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">중단 조건</dt>
+              <dd>연속 빈 청크 {syncPolicy.emptyStop}회</dd>
             </div>
             <div>
               <dt className="text-muted-foreground">스냅샷 기준일 (KST)</dt>
@@ -92,7 +106,7 @@ export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
               <dt className="text-muted-foreground">오늘 적재 행 수</dt>
               <dd>{initialStatus.todayRowCount.toLocaleString()}건</dd>
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <dt className="text-muted-foreground">마지막 동기화</dt>
               <dd>
                 {initialStatus.lastIngestion
@@ -123,27 +137,28 @@ export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>확인용 동기화</CardTitle>
+          <CardTitle>동기화</CardTitle>
           <CardDescription>
-            2022년 4~6월 등록 상품을 1회 조회해 `shopling_inventory`에
-            적재합니다. DB 매핑 검증용입니다.
+            등록일 기준으로 과거 방향 3개월 창을 연속 조회합니다. 청크 경계일은
+            맞닿으며, 중복 SKU는 goods_key+barcode 기준으로 제거합니다.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Button type="button" disabled={isDisabled} onClick={handleSync}>
-            {loading ? "동기화 중..." : "확인용 동기화 (1회)"}
+            {loading ? "동기화 중..." : "동기화"}
           </Button>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
           {result ? (
-            <div className="space-y-2 rounded-md border border-border p-4 text-sm">
+            <div className="space-y-4 rounded-md border border-border p-4 text-sm">
               <p className="text-primary">동기화가 완료되었습니다.</p>
               <dl className="grid gap-2 sm:grid-cols-2">
                 <div>
                   <dt className="text-muted-foreground">조회 기간</dt>
                   <dd>
-                    {formatYmd(result.startDt)} ~ {formatYmd(result.endDt)}
+                    {formatYmd(result.oldestStartDt)} ~{" "}
+                    {formatYmd(result.newestEndDt)}
                   </dd>
                 </div>
                 <div>
@@ -151,14 +166,53 @@ export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
                   <dd>{formatYmd(result.snapshotDate)}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">상품 건수</dt>
+                  <dt className="text-muted-foreground">처리 청크</dt>
+                  <dd>{result.chunksProcessed}개</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">중단 사유</dt>
+                  <dd>{formatStoppedReason(result.stoppedReason)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">상품 건수 (합계)</dt>
                   <dd>{result.fetchedProductCount.toLocaleString()}건</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">적재 행 수</dt>
+                  <dt className="text-muted-foreground">적재 행 수 (dedupe 후)</dt>
                   <dd>{result.rowCount.toLocaleString()}건</dd>
                 </div>
               </dl>
+
+              {result.chunks.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[28rem] text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-muted-foreground">
+                        <th className="py-2 pr-3 font-medium">청크</th>
+                        <th className="py-2 pr-3 font-medium">기간</th>
+                        <th className="py-2 pr-3 font-medium">상품</th>
+                        <th className="py-2 font-medium">병합 행</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.chunks.map((chunk) => (
+                        <tr
+                          key={chunk.chunkIndex}
+                          className="border-b border-border/60"
+                        >
+                          <td className="py-2 pr-3">{chunk.chunkIndex}</td>
+                          <td className="py-2 pr-3">
+                            {formatYmd(chunk.startDt)} ~{" "}
+                            {formatYmd(chunk.endDt)}
+                          </td>
+                          <td className="py-2 pr-3">{chunk.productCount}</td>
+                          <td className="py-2">{chunk.rowsMerged}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </CardContent>

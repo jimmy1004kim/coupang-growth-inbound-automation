@@ -4,23 +4,29 @@ import { getKstTodayDate } from "@/lib/date/kst-today";
 import { prisma } from "@/lib/db";
 import { buildShoplingRequestXml } from "@/lib/shopling/build-request-xml";
 import {
+  buildShoplingSyncChunk,
+  SHOPLING_SYNC_EMPTY_STOP,
+  SHOPLING_SYNC_MAX_CHUNKS,
+} from "@/lib/shopling/chunk-date-ranges";
+import {
   SHOPLING_PROD_FIELDS_SYNC,
   SHOPLING_PROD_GATHER_URL,
-  SHOPLING_SYNC_VERIFY_END_YMD,
-  SHOPLING_SYNC_VERIFY_START_YMD,
 } from "@/lib/shopling/constants";
 import { formatYyyyMmDd } from "@/lib/shopling/format-yyyymmdd";
 import { postShoplingApi } from "@/lib/shopling/post-shopling-api";
 import {
   countGoodsInfoBlocks,
   parseShoplingProductsFromXml,
+  type ParsedShoplingInventoryRow,
 } from "@/lib/shopling/parse-product-rows";
 import { extractShoplingApiError } from "@/lib/shopling/parse-response-xml";
 import { SHOPLING_INVENTORY_TABLE } from "@/lib/shopling/target";
 import { getShoplingApiConfigSecret } from "@/services/shopling-api-config/get-shopling-api-config-secret";
 import type {
+  ShoplingSyncChunkResult,
   ShoplingSyncRunResult,
   ShoplingSyncServiceResult,
+  ShoplingSyncStoppedReason,
 } from "@/services/shopling-sync/types";
 
 const CREATE_MANY_BATCH_SIZE = 1000;
@@ -29,22 +35,19 @@ type SyncShoplingInventoryInput = {
   uploadedById: string;
 };
 
-export async function syncShoplingInventory(
-  input: SyncShoplingInventoryInput,
-): Promise<ShoplingSyncServiceResult<ShoplingSyncRunResult>> {
-  const configResult = await getShoplingApiConfigSecret();
+function dedupeKey(row: ParsedShoplingInventoryRow): string {
+  return `${row.goodsKey}|${row.barcode}`;
+}
 
-  if (!configResult.ok) {
-    return configResult;
-  }
-
-  const startDt = SHOPLING_SYNC_VERIFY_START_YMD;
-  const endDt = SHOPLING_SYNC_VERIFY_END_YMD;
-
+async function fetchShoplingChunkXml(
+  config: { loginId: string; companyId: string; apiAuthKey: string },
+  startDt: string,
+  endDt: string,
+): Promise<{ ok: true; body: string } | { ok: false; error: string }> {
   const requestXml = buildShoplingRequestXml({
-    loginId: configResult.data.loginId,
-    companyId: configResult.data.companyId,
-    apiAuthKey: configResult.data.apiAuthKey,
+    loginId: config.loginId,
+    companyId: config.companyId,
+    apiAuthKey: config.apiAuthKey,
     startDt,
     endDt,
     prodFields: SHOPLING_PROD_FIELDS_SYNC,
@@ -84,9 +87,86 @@ export async function syncShoplingInventory(
     return { ok: false, error: apiError };
   }
 
-  const parsedRows = parseShoplingProductsFromXml(responseBody);
-  const fetchedProductCount = countGoodsInfoBlocks(responseBody);
-  const snapshotDate = getKstTodayDate();
+  return { ok: true, body: responseBody };
+}
+
+export async function syncShoplingInventory(
+  input: SyncShoplingInventoryInput,
+): Promise<ShoplingSyncServiceResult<ShoplingSyncRunResult>> {
+  const configResult = await getShoplingApiConfigSecret();
+
+  if (!configResult.ok) {
+    return configResult;
+  }
+
+  const today = getKstTodayDate();
+  const dedupeMap = new Map<string, ParsedShoplingInventoryRow>();
+  const chunkResults: ShoplingSyncChunkResult[] = [];
+  let consecutiveEmpty = 0;
+  let fetchedProductCount = 0;
+  let stoppedReason: ShoplingSyncStoppedReason = "max_chunks";
+
+  for (let chunkIndex = 0; chunkIndex < SHOPLING_SYNC_MAX_CHUNKS; chunkIndex++) {
+    const chunk = buildShoplingSyncChunk(today, chunkIndex);
+    const fetchResult = await fetchShoplingChunkXml(
+      configResult.data,
+      chunk.startDt,
+      chunk.endDt,
+    );
+
+    if (!fetchResult.ok) {
+      return { ok: false, error: fetchResult.error };
+    }
+
+    const productCount = countGoodsInfoBlocks(fetchResult.body);
+    fetchedProductCount += productCount;
+
+    if (productCount === 0) {
+      consecutiveEmpty++;
+      chunkResults.push({
+        chunkIndex,
+        startDt: chunk.startDt,
+        endDt: chunk.endDt,
+        productCount: 0,
+        rowsMerged: 0,
+      });
+
+      if (consecutiveEmpty >= SHOPLING_SYNC_EMPTY_STOP) {
+        stoppedReason = "empty_streak";
+        break;
+      }
+
+      continue;
+    }
+
+    consecutiveEmpty = 0;
+    const parsedRows = parseShoplingProductsFromXml(fetchResult.body);
+    let rowsMerged = 0;
+
+    for (const row of parsedRows) {
+      const key = dedupeKey(row);
+
+      if (!dedupeMap.has(key)) {
+        dedupeMap.set(key, row);
+        rowsMerged++;
+      }
+    }
+
+    chunkResults.push({
+      chunkIndex,
+      startDt: chunk.startDt,
+      endDt: chunk.endDt,
+      productCount,
+      rowsMerged,
+    });
+  }
+
+  const rows = [...dedupeMap.values()];
+  const snapshotDate = today;
+  const oldestStartDt =
+    chunkResults[chunkResults.length - 1]?.startDt ??
+    buildShoplingSyncChunk(today, 0).startDt;
+  const newestEndDt = formatYyyyMmDd(today);
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -99,14 +179,14 @@ export async function syncShoplingInventory(
           tableName: SHOPLING_INVENTORY_TABLE,
           snapshotDate,
           operation: "reload",
-          rowCount: parsedRows.length,
+          rowCount: rows.length,
           uploadedById: input.uploadedById,
-          sourceFile: "shopling-api-sync-verify",
+          sourceFile: "shopling-api-sync",
         },
       });
 
-      for (let offset = 0; offset < parsedRows.length; offset += CREATE_MANY_BATCH_SIZE) {
-        const batch = parsedRows.slice(offset, offset + CREATE_MANY_BATCH_SIZE);
+      for (let offset = 0; offset < rows.length; offset += CREATE_MANY_BATCH_SIZE) {
+        const batch = rows.slice(offset, offset + CREATE_MANY_BATCH_SIZE);
 
         await tx.shoplingInventory.createMany({
           data: batch.map((row) => ({
@@ -145,10 +225,13 @@ export async function syncShoplingInventory(
     ok: true,
     data: {
       snapshotDate: formatYyyyMmDd(snapshotDate),
-      startDt,
-      endDt,
+      oldestStartDt,
+      newestEndDt,
+      chunksProcessed: chunkResults.length,
+      stoppedReason,
       fetchedProductCount,
-      rowCount: parsedRows.length,
+      rowCount: rows.length,
+      chunks: chunkResults,
     },
   };
 }

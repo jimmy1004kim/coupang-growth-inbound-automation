@@ -3,7 +3,7 @@ import { logRouteError } from "@/lib/api/log-route-error";
 import { fromServiceResult, jsonError } from "@/lib/api/response";
 import { syncShoplingInventory } from "@/services/shopling-sync/sync-shopling-inventory";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST() {
   try {
