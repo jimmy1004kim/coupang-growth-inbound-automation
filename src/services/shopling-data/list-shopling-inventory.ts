@@ -1,16 +1,36 @@
 import { prisma } from "@/lib/db";
 import { formatYyyyMmDd } from "@/lib/shopling/format-yyyymmdd";
 import type { ListShoplingInventoryResult } from "@/services/shopling-data/types";
-import { SHOPLING_INVENTORY_PAGE_SIZE } from "@/services/shopling-data/types";
+import { normalizeShoplingInventoryPageSize } from "@/services/shopling-data/types";
 
 type ListShoplingInventoryOptions = {
   page?: number;
+  pageSize?: number;
+  search?: string;
 };
+
+function buildWhere(maxSnapshotDate: Date, search?: string) {
+  const trimmed = search?.trim();
+
+  return {
+    snapshotDate: maxSnapshotDate,
+    ...(trimmed
+      ? {
+          OR: [
+            { goodsKey: { contains: trimmed, mode: "insensitive" as const } },
+            { ptnGoodsCd: { contains: trimmed, mode: "insensitive" as const } },
+            { barcode: { contains: trimmed, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
+  };
+}
 
 export async function listShoplingInventory(
   options: ListShoplingInventoryOptions = {},
 ): Promise<ListShoplingInventoryResult> {
   const page = Math.max(1, options.page ?? 1);
+  const pageSize = normalizeShoplingInventoryPageSize(options.pageSize);
 
   const { _max } = await prisma.shoplingInventory.aggregate({
     _max: { snapshotDate: true },
@@ -26,7 +46,7 @@ export async function listShoplingInventory(
     };
   }
 
-  const where = { snapshotDate: maxSnapshotDate };
+  const where = buildWhere(maxSnapshotDate, options.search);
 
   const [totalCount, rows] = await Promise.all([
     prisma.shoplingInventory.count({ where }),
@@ -45,8 +65,8 @@ export async function listShoplingInventory(
         location: true,
       },
       orderBy: [{ goodsKey: "asc" }, { barcode: "asc" }],
-      skip: (page - 1) * SHOPLING_INVENTORY_PAGE_SIZE,
-      take: SHOPLING_INVENTORY_PAGE_SIZE,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     }),
   ]);
 
