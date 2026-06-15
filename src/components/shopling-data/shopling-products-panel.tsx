@@ -11,14 +11,6 @@ type ShoplingProductsPanelProps = {
   pageSize: number;
 };
 
-function formatYmd(ymd: string): string {
-  if (ymd.length !== 8) {
-    return ymd;
-  }
-
-  return `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`;
-}
-
 export function ShoplingProductsPanel({
   data,
   search,
@@ -29,28 +21,14 @@ export function ShoplingProductsPanel({
   const isSearchEmpty = search.trim().length === 0;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">상품정보</h1>
-        <p className="text-muted-foreground">
-          샵플링 동기화 재고·상품 정보를 조회합니다.
-        </p>
-      </div>
-
-      {data.snapshotDate ? (
-        <p className="text-sm text-muted-foreground">
-          스냅샷 기준일: {formatYmd(data.snapshotDate)} · 총{" "}
-          {data.totalCount.toLocaleString()}건
-        </p>
-      ) : null}
-
+    <div className="space-y-4">
       {hasSnapshot ? (
         <ShoplingProductsToolbar
           search={search}
           page={page}
           pageSize={pageSize}
           totalCount={data.totalCount}
-          hasSnapshot={hasSnapshot}
+          snapshotDate={data.snapshotDate}
         />
       ) : null}
 

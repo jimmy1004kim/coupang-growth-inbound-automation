@@ -17,11 +17,10 @@ export function ShoplingPageSizeSelect({
   const router = useRouter();
 
   return (
-    <label className="flex items-center gap-2 text-sm text-muted-foreground">
-      <span className="shrink-0">조회 크기</span>
-      <select
-        value={pageSize}
-        onChange={(event) => {
+    <select
+      value={pageSize}
+      aria-label="표시 건수"
+      onChange={(event) => {
           const nextPageSize = Number(event.target.value);
           router.push(
             `/data/shopling/products${buildProductsQuery({
@@ -39,6 +38,5 @@ export function ShoplingPageSizeSelect({
           </option>
         ))}
       </select>
-    </label>
   );
 }
