@@ -53,8 +53,7 @@ export async function listWarehouseInboundRows(
         AND growth_inbound_recommend > 0
       ORDER BY location ASC NULLS LAST,
                registered_product_name ASC NULLS LAST,
-               option_id ASC NULLS LAST,
-               shopling_row_key ASC
+               option_name ASC NULLS LAST
     `,
   );
 
