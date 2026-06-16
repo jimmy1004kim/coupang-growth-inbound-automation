@@ -1,0 +1,58 @@
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import type { ShoplingNewOptionProductRowView } from "@/services/shopling-data/types";
+
+function formatCell(value: string | null | undefined): string {
+  if (value === null || value === undefined || value.trim() === "") {
+    return "-";
+  }
+
+  return value;
+}
+
+export function ShoplingNewOptionProductsTable({
+  rows,
+}: {
+  rows: ShoplingNewOptionProductRowView[];
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border bg-background">
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader className="bg-muted/40">
+            <TableRow className="hover:bg-transparent">
+              <TableHead>샵플링코드</TableHead>
+              <TableHead>옵션코드</TableHead>
+              <TableHead>자사상품코드</TableHead>
+              <TableHead>옵션</TableHead>
+              <TableHead>바코드</TableHead>
+              <TableHead>추가일</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.optId}>
+                <TableCell>{row.goodsKey}</TableCell>
+                <TableCell>{row.optId}</TableCell>
+                <TableCell>{formatCell(row.ptnGoodsCd)}</TableCell>
+                <TableCell>{formatCell(row.optionValue)}</TableCell>
+                <TableCell>{formatCell(row.barcode)}</TableCell>
+                <TableCell>{row.firstAddedDate}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}

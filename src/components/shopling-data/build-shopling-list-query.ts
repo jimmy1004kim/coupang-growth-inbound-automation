@@ -3,6 +3,9 @@ type BuildShoplingListQueryOptions = {
   page?: number;
   pageSize?: number;
   defaultPageSize?: number;
+  from?: string;
+  to?: string;
+  days?: number | null;
 };
 
 export function buildShoplingListQuery({
@@ -10,12 +13,27 @@ export function buildShoplingListQuery({
   page,
   pageSize,
   defaultPageSize = 50,
+  from,
+  to,
+  days,
 }: BuildShoplingListQueryOptions): string {
   const params = new URLSearchParams();
 
   const trimmed = q?.trim();
   if (trimmed) {
     params.set("q", trimmed);
+  }
+
+  if (days !== undefined && days !== null) {
+    params.set("days", String(days));
+  } else {
+    if (from) {
+      params.set("from", from);
+    }
+
+    if (to) {
+      params.set("to", to);
+    }
   }
 
   if (page !== undefined && page > 1) {
