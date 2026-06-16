@@ -1,18 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { DeliverablesSection } from "@/components/deliverables/deliverables-section";
 import { Button } from "@/components/ui/button";
 import { apiPost } from "@/lib/api-client";
 import type { ShoplingWmsLoginData } from "@/services/shopling-wms-automation/login-shopling-wms";
-import type { NegativeStockRunData } from "@/services/shopling-wms-automation/run-negative-stock";
+
+const RUN_ENDPOINT = "/api/automation/shopling-negative-stock/run";
+
+type RunEvent =
+  | { type: "progress"; message: string }
+  | {
+      type: "result";
+      ok: true;
+      data: { rowCount: number; memo: string; message?: string };
+    }
+  | { type: "result"; ok: false; error: string };
 
 export function ShoplingNegativeStockSection() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSubtracting, setIsSubtracting] = useState(false);
   const [showPluginGuide, setShowPluginGuide] = useState(false);
+  const [progress, setProgress] = useState<string[]>([]);
+  const [runResult, setRunResult] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   function handlePluginInstallClick() {
     const link = document.createElement("a");
@@ -53,34 +66,88 @@ export function ShoplingNegativeStockSection() {
       return;
     }
 
+    const controller = new AbortController();
+    abortRef.current = controller;
     setIsSubtracting(true);
+    setProgress([]);
+    setRunResult(null);
 
     try {
-      const response = await apiPost<NegativeStockRunData>(
-        "/api/automation/shopling-negative-stock/run",
-        {},
-      );
+      const response = await fetch(RUN_ENDPOINT, {
+        method: "POST",
+        signal: controller.signal,
+      });
 
-      if (!response.ok) {
-        window.alert(response.error);
+      if (!response.ok || !response.body) {
+        let message = `요청 실패 (${response.status})`;
+        try {
+          const body = await response.json();
+          if (body?.error) message = body.error;
+        } catch {
+          // ignore
+        }
+        setRunResult(`❌ ${message}`);
         return;
       }
 
-      const { rowCount, memo, message, runDir } = response.data;
-      const summary =
-        message ??
-        `처리 완료: ${rowCount}건\n메모: ${memo}\n작업 폴더: ${runDir}`;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      window.alert(summary);
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          let event: RunEvent;
+          try {
+            event = JSON.parse(line) as RunEvent;
+          } catch {
+            continue;
+          }
+
+          if (event.type === "progress") {
+            setProgress((prev) => [...prev, event.message]);
+          } else if (event.type === "result") {
+            if (event.ok) {
+              setRunResult(
+                event.data.message ??
+                  `✅ 완료 — 음수 재고 ${event.data.rowCount}건 반영`,
+              );
+            } else {
+              setRunResult(`❌ ${event.error}`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setRunResult("⏹ 작업을 중지했습니다.");
+      } else {
+        setRunResult(
+          `❌ ${error instanceof Error ? error.message : "오류가 발생했습니다."}`,
+        );
+      }
     } finally {
       setIsSubtracting(false);
+      abortRef.current = null;
     }
+  }
+
+  function handleStopClick() {
+    abortRef.current?.abort();
   }
 
   return (
     <DeliverablesSection
       title="샵플링 재고 음수빼기"
-      description="샵플링 WMS 로그인 후 음수 재고를 보정합니다."
+      description="샵플링 WMS 세션으로 음수 재고를 보정합니다."
       variant="plain"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
@@ -108,7 +175,32 @@ export function ShoplingNegativeStockSection() {
         >
           {isSubtracting ? "처리 중..." : "재고 음수빼기"}
         </Button>
+        {isSubtracting ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            onClick={handleStopClick}
+          >
+            중지
+          </Button>
+        ) : null}
       </div>
+
+      {isSubtracting || progress.length > 0 || runResult ? (
+        <div className="mt-4 rounded-lg border bg-muted/30 p-4 text-sm">
+          <p className="mb-2 font-medium">진행 상황</p>
+          <ul className="space-y-1 text-muted-foreground">
+            {progress.map((step, index) => (
+              <li key={index}>• {step}</li>
+            ))}
+            {isSubtracting ? <li className="animate-pulse">• 진행 중...</li> : null}
+          </ul>
+          {runResult ? (
+            <p className="mt-3 font-medium text-foreground">{runResult}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {showPluginGuide ? (
         <div className="mt-4 rounded-lg border bg-muted/30 p-4 text-sm">
