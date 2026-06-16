@@ -1,7 +1,5 @@
 const APP_URL = "https://coupang-growth-inbound-automation.vercel.app";
-const SUPABASE_REF = "kjoqqxveosndyommgaqd";
 const APP_HOST = "coupang-growth-inbound-automation.vercel.app";
-const AUTH_COOKIE_BASE = `sb-${SUPABASE_REF}-auth-token`;
 
 const statusEl = document.getElementById("status");
 const btn = document.getElementById("send");
@@ -11,7 +9,6 @@ function setStatus(msg, kind) {
   statusEl.className = kind || "";
 }
 
-// chrome sameSite → Playwright sameSite
 function mapSameSite(value) {
   switch (value) {
     case "no_restriction":
@@ -25,7 +22,6 @@ function mapSameSite(value) {
   }
 }
 
-// 샵플링 쿠키 → Playwright storageState 쿠키 배열
 async function collectShoplingCookies() {
   const cookies = await chrome.cookies.getAll({ domain: "shopling.co.kr" });
   return cookies.map((c) => ({
@@ -49,65 +45,83 @@ function base64UrlDecodeToString(b64url) {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
-// 앱의 Supabase 인증 쿠키(청크 포함)에서 access_token 추출
+// 앱 도메인의 모든 sb-*-auth-token(청크 포함) 쿠키에서 access_token 추출.
+// 진단을 위해 { token, diag } 반환.
 async function getAppAccessToken() {
-  const cookies = await chrome.cookies.getAll({ domain: APP_HOST });
-  const auth = cookies.filter((c) => c.name.startsWith(AUTH_COOKIE_BASE));
-  if (auth.length === 0) return null;
+  const all = await chrome.cookies.getAll({ domain: APP_HOST });
+  const auth = all.filter((c) => /^sb-.*-auth-token(\.\d+)?$/.test(c.name));
+  const diag = {
+    appCookieCount: all.length,
+    authCookieNames: auth.map((c) => c.name),
+  };
+  if (auth.length === 0) return { token: null, diag };
 
-  // base, base.0, base.1 ... 순서로 정렬 후 값 이어붙이기
   auth.sort((a, b) => {
-    const na = a.name === AUTH_COOKIE_BASE ? -1 : Number(a.name.split(".").pop());
-    const nb = b.name === AUTH_COOKIE_BASE ? -1 : Number(b.name.split(".").pop());
+    const pa = a.name.split(".");
+    const pb = b.name.split(".");
+    const na = /^\d+$/.test(pa[pa.length - 1]) ? Number(pa[pa.length - 1]) : -1;
+    const nb = /^\d+$/.test(pb[pb.length - 1]) ? Number(pb[pb.length - 1]) : -1;
     return na - nb;
   });
+
   let raw = auth.map((c) => c.value).join("");
   try {
     raw = decodeURIComponent(raw);
   } catch {
-    /* already decoded */
+    /* ignore */
   }
 
   let jsonStr = raw;
   if (raw.startsWith("base64-")) {
-    jsonStr = base64UrlDecodeToString(raw.slice("base64-".length));
+    try {
+      jsonStr = base64UrlDecodeToString(raw.slice("base64-".length));
+    } catch (e) {
+      diag.decodeError = "base64 decode 실패";
+      return { token: null, diag };
+    }
   }
 
   let parsed;
   try {
     parsed = JSON.parse(jsonStr);
-  } catch {
-    return null;
+  } catch (e) {
+    diag.decodeError = "JSON parse 실패";
+    return { token: null, diag };
   }
-  if (Array.isArray(parsed)) return parsed[0] || null;
-  return parsed.access_token || null;
+  const token = Array.isArray(parsed)
+    ? parsed[0] || null
+    : parsed.access_token || null;
+  diag.tokenFound = !!token;
+  return { token, diag };
 }
 
 async function run() {
   btn.disabled = true;
   setStatus("세션 수집 중...");
   try {
-    const token = await getAppAccessToken();
+    const { token, diag } = await getAppAccessToken();
+    const shoplingCookies = await collectShoplingCookies();
+
     if (!token) {
       setStatus(
-        "입고 자동화 앱 로그인 정보를 찾지 못했습니다. 먼저 앱에 로그인해 주세요.",
+        "앱 로그인 토큰을 못 찾았습니다.\n진단: " +
+          JSON.stringify(diag) +
+          "\n(앱에 로그인했는지, 같은 크롬 프로필인지 확인)",
         "err",
       );
-      btn.disabled = false;
       return;
     }
-
-    const cookies = await collectShoplingCookies();
-    if (cookies.length === 0) {
+    if (shoplingCookies.length === 0) {
       setStatus(
         "샵플링 쿠키가 없습니다. 샵플링 WMS에 로그인했는지 확인해 주세요.",
         "err",
       );
-      btn.disabled = false;
       return;
     }
 
-    setStatus("앱으로 전송 중...");
+    setStatus(
+      `전송 중... (앱 토큰 OK, 샵플링 쿠키 ${shoplingCookies.length}개)`,
+    );
     const res = await fetch(
       `${APP_URL}/api/automation/shopling-negative-stock/session`,
       {
@@ -116,10 +130,11 @@ async function run() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ storageState: { cookies, origins: [] } }),
+        body: JSON.stringify({
+          storageState: { cookies: shoplingCookies, origins: [] },
+        }),
       },
     );
-
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.ok) {
       const exp = data.data?.expiresAt
@@ -127,7 +142,10 @@ async function run() {
         : "";
       setStatus(`✅ 세션 전송 완료. 만료: ${exp}`, "ok");
     } else {
-      setStatus(`❌ 실패 (${res.status}): ${data.error || "알 수 없는 오류"}`, "err");
+      setStatus(
+        `❌ 서버 응답 ${res.status}: ${data.error || "알 수 없는 오류"}`,
+        "err",
+      );
     }
   } catch (e) {
     setStatus(`❌ 오류: ${e.message}`, "err");
