@@ -3,12 +3,14 @@ import type { ReactNode } from "react";
 
 import { CoupangGrowthInventoryHealthTable } from "@/components/coupang-growth-data/coupang-growth-inventory-health-table";
 import { CoupangGrowthInventoryHealthToolbar } from "@/components/coupang-growth-data/coupang-growth-inventory-health-toolbar";
+import { INVENTORY_HEALTH_ALL_SELLERS } from "@/services/coupang-growth-data/resolve-inventory-health-seller-filter";
+import type { InventoryHealthSellerFilter } from "@/services/coupang-growth-data/resolve-inventory-health-seller-filter";
 import type { SellerAccountView } from "@/services/coupang-seller-accounts/types";
 import type { ListInventoryHealthResult } from "@/services/coupang-growth-data/types";
 
 type CoupangGrowthInventoryHealthPanelProps = {
   accounts: SellerAccountView[];
-  sellerId: string;
+  sellerFilter: InventoryHealthSellerFilter;
   data: ListInventoryHealthResult;
   search: string;
   page: number;
@@ -23,9 +25,13 @@ function EmptyState({ children }: { children: ReactNode }) {
   );
 }
 
+function hasInventoryHealthData(data: ListInventoryHealthResult): boolean {
+  return data.hasHealthData;
+}
+
 export function CoupangGrowthInventoryHealthPanel({
   accounts,
-  sellerId,
+  sellerFilter,
   data,
   search,
   page,
@@ -33,6 +39,8 @@ export function CoupangGrowthInventoryHealthPanel({
 }: CoupangGrowthInventoryHealthPanelProps) {
   const hasAccounts = accounts.some((account) => account.isActive);
   const isSearchEmpty = search.trim().length === 0;
+  const hasValidSellerFilter =
+    sellerFilter === INVENTORY_HEALTH_ALL_SELLERS || sellerFilter.length > 0;
 
   if (!hasAccounts) {
     return (
@@ -53,7 +61,7 @@ export function CoupangGrowthInventoryHealthPanel({
     );
   }
 
-  if (!sellerId) {
+  if (!hasValidSellerFilter) {
     return (
       <EmptyState>
         <p className="text-sm text-muted-foreground">
@@ -63,22 +71,34 @@ export function CoupangGrowthInventoryHealthPanel({
     );
   }
 
-  if (!data.snapshotDate) {
+  if (!hasInventoryHealthData(data)) {
     return (
-      <EmptyState>
-        <p className="text-sm text-muted-foreground">
-          조회할 재고 현황 데이터가 없습니다.
-        </p>
-        <p className="mt-2 text-sm">
-          <Link
-            href="/sync/coupang-growth/excel-upload"
-            className="text-primary underline-offset-4 hover:underline"
-          >
-            데이터 동기화 &gt; 쿠팡 Growth
-          </Link>
-          에서 재고 현황 엑셀을 먼저 업로드해 주세요.
-        </p>
-      </EmptyState>
+      <>
+        <CoupangGrowthInventoryHealthToolbar
+          accounts={accounts}
+          sellerFilter={sellerFilter}
+          search={search}
+          page={page}
+          pageSize={pageSize}
+          totalCount={data.totalCount}
+          snapshotDate={data.snapshotDate}
+          isAllSellers={data.isAllSellers}
+        />
+        <EmptyState>
+          <p className="text-sm text-muted-foreground">
+            조회할 재고 현황 데이터가 없습니다.
+          </p>
+          <p className="mt-2 text-sm">
+            <Link
+              href="/sync/coupang-growth/excel-upload"
+              className="text-primary underline-offset-4 hover:underline"
+            >
+              데이터 동기화 &gt; 쿠팡 Growth
+            </Link>
+            에서 재고 현황 엑셀을 먼저 업로드해 주세요.
+          </p>
+        </EmptyState>
+      </>
     );
   }
 
@@ -86,12 +106,13 @@ export function CoupangGrowthInventoryHealthPanel({
     <div className="space-y-4">
       <CoupangGrowthInventoryHealthToolbar
         accounts={accounts}
-        sellerId={sellerId}
+        sellerFilter={sellerFilter}
         search={search}
         page={page}
         pageSize={pageSize}
         totalCount={data.totalCount}
         snapshotDate={data.snapshotDate}
+        isAllSellers={data.isAllSellers}
       />
 
       {data.totalCount === 0 && !isSearchEmpty ? (

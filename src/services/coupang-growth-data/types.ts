@@ -23,12 +23,16 @@ export type InventoryHealthRowView = {
 
 export type ListInventoryHealthResult = {
   snapshotDate: string | null;
+  isAllSellers: boolean;
+  hasHealthData: boolean;
   totalCount: number;
   rows: InventoryHealthRowView[];
 };
 
 export const EMPTY_INVENTORY_HEALTH_RESULT: ListInventoryHealthResult = {
   snapshotDate: null,
+  isAllSellers: false,
+  hasHealthData: false,
   totalCount: 0,
   rows: [],
 };

@@ -1,5 +1,10 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import {
+  INVENTORY_HEALTH_ALL_SELLERS,
+  isInventoryHealthAllSellers,
+  type InventoryHealthSellerFilter,
+} from "@/services/coupang-growth-data/resolve-inventory-health-seller-filter";
 import type {
   InventoryHealthRowView,
   ListInventoryHealthResult,
@@ -7,7 +12,7 @@ import type {
 import { normalizeInventoryHealthPageSize } from "@/services/coupang-growth-data/types";
 
 type ListInventoryHealthOptions = {
-  coupangSellerAccountId: string;
+  sellerFilter: InventoryHealthSellerFilter;
   page?: number;
   pageSize?: number;
   search?: string;
@@ -71,34 +76,65 @@ function buildSearchCondition(search?: string) {
   )`;
 }
 
+function buildSellerCondition(sellerFilter: InventoryHealthSellerFilter) {
+  if (isInventoryHealthAllSellers(sellerFilter)) {
+    return Prisma.sql`a."isActive" = true`;
+  }
+
+  return Prisma.sql`v.coupang_seller_account_id = ${sellerFilter}`;
+}
+
+function buildOrderBy(sellerFilter: InventoryHealthSellerFilter) {
+  if (isInventoryHealthAllSellers(sellerFilter)) {
+    return Prisma.sql`
+      ORDER BY a."displayName" ASC,
+               v.registered_product_name ASC NULLS LAST,
+               v.option_id ASC NULLS LAST
+    `;
+  }
+
+  return Prisma.sql`
+    ORDER BY v.registered_product_name ASC NULLS LAST, v.option_id ASC NULLS LAST
+  `;
+}
+
 export async function listInventoryHealth(
   options: ListInventoryHealthOptions,
 ): Promise<ListInventoryHealthResult> {
   const page = Math.max(1, options.page ?? 1);
   const pageSize = normalizeInventoryHealthPageSize(options.pageSize);
-  const sellerId = options.coupangSellerAccountId;
+  const sellerFilter = options.sellerFilter;
+  const isAllSellers = isInventoryHealthAllSellers(sellerFilter);
   const searchCondition = buildSearchCondition(options.search);
+  const sellerCondition = buildSellerCondition(sellerFilter);
+  const orderBy = buildOrderBy(sellerFilter);
 
   const healthSnapshot = await prisma.coupangGrowthInventoryHealth.aggregate({
-    where: { coupangSellerAccountId: sellerId },
+    where: isAllSellers
+      ? { coupangSellerAccount: { isActive: true } }
+      : { coupangSellerAccountId: sellerFilter },
     _max: { snapshotDate: true },
   });
 
   if (!healthSnapshot._max.snapshotDate) {
     return {
       snapshotDate: null,
+      isAllSellers,
+      hasHealthData: false,
       totalCount: 0,
       rows: [],
     };
   }
 
-  const snapshotDate = formatSnapshotDate(healthSnapshot._max.snapshotDate);
+  const snapshotDate = isAllSellers
+    ? null
+    : formatSnapshotDate(healthSnapshot._max.snapshotDate);
 
   const baseFrom = Prisma.sql`
     FROM inbound_workbench_v v
     INNER JOIN "CoupangSellerAccount" a
       ON v.coupang_seller_account_id = a.id
-    WHERE v.coupang_seller_account_id = ${sellerId}
+    WHERE ${sellerCondition}
     ${searchCondition}
   `;
 
@@ -127,7 +163,7 @@ export async function listInventoryHealth(
           v.days_of_cover,
           v.health_snapshot_date
         ${baseFrom}
-        ORDER BY v.registered_product_name ASC NULLS LAST, v.option_id ASC NULLS LAST
+        ${orderBy}
         LIMIT ${pageSize}
         OFFSET ${(page - 1) * pageSize}
       `,
@@ -136,7 +172,11 @@ export async function listInventoryHealth(
 
   return {
     snapshotDate,
+    isAllSellers,
+    hasHealthData: true,
     totalCount: Number(countResult[0]?.count ?? 0),
     rows: rows.map(mapRow),
   };
 }
+
+export { INVENTORY_HEALTH_ALL_SELLERS };

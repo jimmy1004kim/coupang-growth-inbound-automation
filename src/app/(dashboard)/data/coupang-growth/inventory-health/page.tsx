@@ -1,8 +1,8 @@
 import { CoupangGrowthInventoryHealthPanel } from "@/components/coupang-growth-data/coupang-growth-inventory-health-panel";
 import { requireProfile } from "@/lib/auth/profile";
-import { resolveSellerAccountId } from "@/services/coupang-seller-accounts/get-default-seller-account-id";
 import { listSellerAccounts } from "@/services/coupang-seller-accounts/list-seller-accounts";
 import { listInventoryHealth } from "@/services/coupang-growth-data/list-inventory-health";
+import { resolveInventoryHealthSellerFilter } from "@/services/coupang-growth-data/resolve-inventory-health-seller-filter";
 import {
   EMPTY_INVENTORY_HEALTH_RESULT,
   normalizeInventoryHealthPageSize,
@@ -24,14 +24,15 @@ export default async function CoupangGrowthInventoryHealthPage({
 
   const params = await searchParams;
   const accounts = await listSellerAccounts();
-  const sellerId = resolveSellerAccountId(accounts, params.seller);
+  const sellerFilter = resolveInventoryHealthSellerFilter(accounts, params.seller);
   const search = params.q?.trim() ?? "";
   const pageSize = normalizeInventoryHealthPageSize(Number(params.pageSize));
   const page = Math.max(1, Number(params.page) || 1);
+  const hasActiveAccounts = accounts.some((account) => account.isActive);
 
-  const data = sellerId
+  const data = hasActiveAccounts
     ? await listInventoryHealth({
-        coupangSellerAccountId: sellerId,
+        sellerFilter,
         page,
         pageSize,
         search,
@@ -41,7 +42,7 @@ export default async function CoupangGrowthInventoryHealthPage({
   return (
     <CoupangGrowthInventoryHealthPanel
       accounts={accounts}
-      sellerId={sellerId}
+      sellerFilter={sellerFilter}
       data={data}
       search={search}
       page={page}

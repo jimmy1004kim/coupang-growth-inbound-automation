@@ -7,6 +7,8 @@ import { buildInventoryHealthQuery } from "@/components/coupang-growth-data/buil
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { INVENTORY_HEALTH_ALL_SELLERS } from "@/services/coupang-growth-data/resolve-inventory-health-seller-filter";
+import type { InventoryHealthSellerFilter } from "@/services/coupang-growth-data/resolve-inventory-health-seller-filter";
 import type { SellerAccountView } from "@/services/coupang-seller-accounts/types";
 import {
   INVENTORY_HEALTH_DEFAULT_PAGE_SIZE,
@@ -17,22 +19,42 @@ const BASE_PATH = "/data/coupang-growth/inventory-health";
 
 type CoupangGrowthInventoryHealthToolbarProps = {
   accounts: SellerAccountView[];
-  sellerId: string;
+  sellerFilter: InventoryHealthSellerFilter;
   search: string;
   page: number;
   pageSize: number;
   totalCount: number;
   snapshotDate: string | null;
+  isAllSellers: boolean;
 };
+
+function formatSummaryLine(
+  snapshotDate: string | null,
+  isAllSellers: boolean,
+  totalCount: number,
+): string {
+  const countLabel = `${totalCount.toLocaleString()}건`;
+
+  if (isAllSellers) {
+    return `판매자별 최신 · ${countLabel}`;
+  }
+
+  if (snapshotDate) {
+    return `재고 ${snapshotDate} · ${countLabel}`;
+  }
+
+  return countLabel;
+}
 
 export function CoupangGrowthInventoryHealthToolbar({
   accounts,
-  sellerId,
+  sellerFilter,
   search,
   page,
   pageSize,
   totalCount,
   snapshotDate,
+  isAllSellers,
 }: CoupangGrowthInventoryHealthToolbarProps) {
   const router = useRouter();
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -40,10 +62,6 @@ export function CoupangGrowthInventoryHealthToolbar({
   const hasNext = page < totalPages;
   const showPagination = totalCount > 0;
   const activeAccounts = accounts.filter((account) => account.isActive);
-
-  if (!snapshotDate) {
-    return null;
-  }
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-muted/30 px-3 py-3">
@@ -54,7 +72,7 @@ export function CoupangGrowthInventoryHealthToolbar({
       >
         <select
           name="seller"
-          defaultValue={sellerId}
+          defaultValue={sellerFilter}
           disabled={activeAccounts.length === 0}
           aria-label="쿠팡 판매자 계정"
           className="h-9 min-w-[160px] rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
@@ -62,11 +80,14 @@ export function CoupangGrowthInventoryHealthToolbar({
           {activeAccounts.length === 0 ? (
             <option value="">판매자 계정 없음</option>
           ) : (
-            activeAccounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.displayName}
-              </option>
-            ))
+            <>
+              <option value={INVENTORY_HEALTH_ALL_SELLERS}>전체</option>
+              {activeAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.displayName}
+                </option>
+              ))}
+            </>
           )}
         </select>
         <Input
@@ -84,7 +105,7 @@ export function CoupangGrowthInventoryHealthToolbar({
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          재고 {snapshotDate} · {totalCount.toLocaleString()}건
+          {formatSummaryLine(snapshotDate, isAllSellers, totalCount)}
         </p>
 
         {showPagination ? (
@@ -96,7 +117,7 @@ export function CoupangGrowthInventoryHealthToolbar({
                 const nextPageSize = Number(event.target.value);
                 router.push(
                   `${BASE_PATH}${buildInventoryHealthQuery({
-                    seller: sellerId,
+                    seller: sellerFilter,
                     q: search,
                     page: 1,
                     pageSize: nextPageSize,
@@ -118,7 +139,7 @@ export function CoupangGrowthInventoryHealthToolbar({
               {hasPrev ? (
                 <Link
                   href={`${BASE_PATH}${buildInventoryHealthQuery({
-                    seller: sellerId,
+                    seller: sellerFilter,
                     q: search,
                     page: page - 1,
                     pageSize,
@@ -137,7 +158,7 @@ export function CoupangGrowthInventoryHealthToolbar({
               {hasNext ? (
                 <Link
                   href={`${BASE_PATH}${buildInventoryHealthQuery({
-                    seller: sellerId,
+                    seller: sellerFilter,
                     q: search,
                     page: page + 1,
                     pageSize,

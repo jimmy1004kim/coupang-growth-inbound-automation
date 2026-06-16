@@ -44,12 +44,13 @@ export function CoupangGrowthInventoryHealthTable({
               <TableHead className="text-right">추천입고수량</TableHead>
               <TableHead>Offer condition</TableHead>
               <TableHead>Days of cover</TableHead>
+              <TableHead>재고 스냅샷일</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
               <TableRow
-                key={`${row.sellerDisplayName}|${row.optionId ?? ""}|${row.productBarcode ?? ""}`}
+                key={`${row.sellerDisplayName}|${row.optionId ?? ""}|${row.productBarcode ?? ""}|${row.healthSnapshotDate}`}
               >
                 <TableCell>{row.sellerDisplayName}</TableCell>
                 <TableCell>{formatCell(row.registeredProductName)}</TableCell>
@@ -74,6 +75,7 @@ export function CoupangGrowthInventoryHealthTable({
                 </TableCell>
                 <TableCell>{formatCell(row.offerCondition)}</TableCell>
                 <TableCell>{formatCell(row.daysOfCover)}</TableCell>
+                <TableCell>{row.healthSnapshotDate}</TableCell>
               </TableRow>
             ))}
           </TableBody>
