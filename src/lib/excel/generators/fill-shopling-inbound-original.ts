@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 
+import { autoFitWorksheetColumns } from "@/lib/excel/auto-fit-worksheet-columns";
 import {
   matchShoplingInboundInventoryRow,
   type ShoplingInboundInventoryRow,
@@ -141,6 +142,8 @@ export function fillShoplingInboundOriginalFile(
     clearCellValue(firstSheet, rowIndex, LOCATION_COL);
     clearCellValue(firstSheet, rowIndex, BARCODE_COL);
   }
+
+  autoFitWorksheetColumns(firstSheet);
 
   const bookType = resolveBookType(workbook, options?.bookType);
 
