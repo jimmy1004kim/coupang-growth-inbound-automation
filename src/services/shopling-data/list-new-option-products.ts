@@ -1,0 +1,165 @@
+import { Prisma } from "@/generated/prisma/client";
+import { prisma } from "@/lib/db";
+import { resolveNewOptionProductsDateRange } from "@/services/shopling-data/resolve-new-option-products-date-range";
+import type {
+  ListNewOptionProductsResult,
+  ShoplingNewOptionProductRowView,
+} from "@/services/shopling-data/types";
+import { normalizeShoplingInventoryPageSize } from "@/services/shopling-data/types";
+
+type ListNewOptionProductsOptions = {
+  from?: string;
+  to?: string;
+  days?: string | number;
+  page?: number;
+  pageSize?: number;
+  search?: string;
+};
+
+type RawNewOptionProductRow = {
+  goods_key: string;
+  opt_id: string;
+  ptn_goods_cd: string | null;
+  option_value: string | null;
+  barcode: string;
+  first_added_date: Date;
+};
+
+function formatFirstAddedDate(value: Date): string {
+  const year = value.getUTCFullYear();
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(value.getUTCDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function mapRow(row: RawNewOptionProductRow): ShoplingNewOptionProductRowView {
+  return {
+    goodsKey: row.goods_key,
+    optId: row.opt_id,
+    ptnGoodsCd: row.ptn_goods_cd,
+    optionValue: row.option_value,
+    barcode: row.barcode,
+    firstAddedDate: formatFirstAddedDate(row.first_added_date),
+  };
+}
+
+function buildSearchCondition(search?: string) {
+  const trimmed = search?.trim();
+
+  if (!trimmed) {
+    return Prisma.empty;
+  }
+
+  const pattern = `%${trimmed}%`;
+
+  return Prisma.sql`AND (
+    i.goods_key ILIKE ${pattern}
+    OR i.opt_id ILIKE ${pattern}
+    OR i.ptn_goods_cd ILIKE ${pattern}
+    OR i.barcode ILIKE ${pattern}
+  )`;
+}
+
+function buildBaseQuery(from: string, to: string, searchCondition: Prisma.Sql) {
+  return Prisma.sql`
+    WITH first_seen AS (
+      SELECT
+        opt_id,
+        MIN(snapshot_date) AS first_added_date
+      FROM shopling_inventory
+      WHERE opt_id IS NOT NULL
+        AND TRIM(opt_id) <> ''
+      GROUP BY opt_id
+    ),
+    filtered AS (
+      SELECT *
+      FROM first_seen
+      WHERE first_added_date >= ${from}::date
+        AND first_added_date <= ${to}::date
+    ),
+    distinct_rows AS (
+      SELECT DISTINCT ON (i.opt_id)
+        i.goods_key,
+        i.opt_id,
+        i.ptn_goods_cd,
+        i.option_value,
+        i.barcode,
+        f.first_added_date
+      FROM filtered f
+      INNER JOIN shopling_inventory i
+        ON i.opt_id = f.opt_id
+        AND i.snapshot_date = f.first_added_date
+      WHERE TRUE
+      ${searchCondition}
+      ORDER BY i.opt_id, i.goods_key ASC, i.barcode ASC
+    )
+  `;
+}
+
+export async function listNewOptionProducts(
+  options: ListNewOptionProductsOptions = {},
+): Promise<ListNewOptionProductsResult> {
+  const page = Math.max(1, options.page ?? 1);
+  const pageSize = normalizeShoplingInventoryPageSize(options.pageSize);
+  const dateRange = resolveNewOptionProductsDateRange({
+    from: options.from,
+    to: options.to,
+    days: options.days,
+  });
+  const searchCondition = buildSearchCondition(options.search);
+
+  const inventoryCount = await prisma.shoplingInventory.count();
+
+  if (inventoryCount === 0) {
+    return {
+      hasInventoryHistory: false,
+      from: dateRange.from,
+      to: dateRange.to,
+      days: dateRange.days,
+      totalCount: 0,
+      rows: [],
+    };
+  }
+
+  const baseCte = buildBaseQuery(
+    dateRange.from,
+    dateRange.to,
+    searchCondition,
+  );
+
+  const [countResult, rows] = await Promise.all([
+    prisma.$queryRaw<[{ count: number }]>(
+      Prisma.sql`
+        ${baseCte}
+        SELECT COUNT(*)::int AS count
+        FROM distinct_rows
+      `,
+    ),
+    prisma.$queryRaw<RawNewOptionProductRow[]>(
+      Prisma.sql`
+        ${baseCte}
+        SELECT
+          goods_key,
+          opt_id,
+          ptn_goods_cd,
+          option_value,
+          barcode,
+          first_added_date
+        FROM distinct_rows
+        ORDER BY first_added_date DESC, goods_key ASC, barcode ASC
+        LIMIT ${pageSize}
+        OFFSET ${(page - 1) * pageSize}
+      `,
+    ),
+  ]);
+
+  return {
+    hasInventoryHistory: true,
+    from: dateRange.from,
+    to: dateRange.to,
+    days: dateRange.days,
+    totalCount: countResult[0]?.count ?? 0,
+    rows: rows.map(mapRow),
+  };
+}

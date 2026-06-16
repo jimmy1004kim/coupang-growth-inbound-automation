@@ -10,6 +10,9 @@ type ShoplingPageSizeSelectProps = {
   search: string;
   pageSizeOptions: readonly number[];
   defaultPageSize: number;
+  from?: string;
+  to?: string;
+  days?: number | null;
 };
 
 export function ShoplingPageSizeSelect({
@@ -18,6 +21,9 @@ export function ShoplingPageSizeSelect({
   search,
   pageSizeOptions,
   defaultPageSize,
+  from,
+  to,
+  days,
 }: ShoplingPageSizeSelectProps) {
   const router = useRouter();
 
@@ -33,6 +39,9 @@ export function ShoplingPageSizeSelect({
             page: 1,
             pageSize: nextPageSize,
             defaultPageSize,
+            from,
+            to,
+            days,
           })}`,
         );
       }}
