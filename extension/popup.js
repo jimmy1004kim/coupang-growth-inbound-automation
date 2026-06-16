@@ -22,22 +22,48 @@ function mapSameSite(value) {
   }
 }
 
-// url + domain 두 방식으로 조회해 합치고 name+domain+path로 중복 제거
+// 모든 쿠키 저장소(일반+시크릿)를 url/domain 두 방식으로 조회, 중복 제거
+async function listStores() {
+  try {
+    const s = await chrome.cookies.getAllCookieStores();
+    if (s && s.length) return s.map((x) => x.id);
+  } catch {
+    /* ignore */
+  }
+  return [undefined];
+}
+
 async function getCookiesRobust(url, domain) {
-  const byUrl = await chrome.cookies.getAll({ url }).catch(() => []);
-  const byDomain = domain
-    ? await chrome.cookies.getAll({ domain }).catch(() => [])
-    : [];
+  const stores = await listStores();
   const seen = new Set();
   const merged = [];
-  for (const c of [...byUrl, ...byDomain]) {
-    const key = `${c.name}|${c.domain}|${c.path}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      merged.push(c);
+  for (const storeId of stores) {
+    const queries = [{ url }];
+    if (domain) queries.push({ domain });
+    for (const q of queries) {
+      if (storeId !== undefined) q.storeId = storeId;
+      const got = await chrome.cookies.getAll(q).catch(() => []);
+      for (const c of got) {
+        const key = `${storeId}|${c.name}|${c.domain}|${c.path}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(c);
+        }
+      }
     }
   }
   return merged;
+}
+
+async function allVisibleDomains() {
+  const stores = await listStores();
+  const domains = new Set();
+  for (const storeId of stores) {
+    const q = storeId !== undefined ? { storeId } : {};
+    const got = await chrome.cookies.getAll(q).catch(() => []);
+    got.forEach((c) => domains.add(c.domain));
+  }
+  return { storeCount: stores.length, domains: [...domains].slice(0, 25) };
 }
 
 async function collectShoplingCookies() {
@@ -78,15 +104,9 @@ async function getAppAccessToken() {
   if (auth.length === 0) {
     // 앱 쿠키를 못 보면, 확장이 볼 수 있는 모든 쿠키의 도메인 목록을 보여준다
     // (호스트 불일치 vs 권한 문제 구분용)
-    try {
-      const everything = await chrome.cookies.getAll({});
-      diag.visibleDomains = [...new Set(everything.map((c) => c.domain))].slice(
-        0,
-        20,
-      );
-    } catch (e) {
-      diag.visibleDomainsError = e.message;
-    }
+    const vis = await allVisibleDomains();
+    diag.storeCount = vis.storeCount;
+    diag.visibleDomains = vis.domains;
     return { token: null, diag };
   }
 
