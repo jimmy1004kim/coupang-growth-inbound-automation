@@ -5,10 +5,12 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider      = "prisma-client"
-  output        = "../src/generated/prisma"
-  // native: 로컬 개발 / rhel-openssl-3.0.x: Vercel 서버리스 런타임
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  provider   = "prisma-client"
+  output     = "../src/generated/prisma"
+  // engineType "client": 네이티브 query engine 바이너리 대신 WASM 쿼리 컴파일러
+  // + 드라이버 어댑터(@prisma/adapter-pg)를 사용 → Vercel 서버리스(rhel) 등
+  // 모든 런타임에서 엔진 바이너리 누락 문제가 사라진다. (src/lib/db.ts 참조)
+  engineType = "client"
 }
 
 datasource db {
