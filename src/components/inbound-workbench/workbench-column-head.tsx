@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp, ArrowUpDown, GripVertical } from "lucide-react";
-import { useCallback, useRef, type DragEvent, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useRef, type DragEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { TableHead } from "@/components/ui/table";
 import {
@@ -106,7 +106,7 @@ export function WorkbenchColumnHead({
   };
 
   const handleResizePointerDown = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (layoutDisabled) {
         return;
       }
@@ -116,7 +116,7 @@ export function WorkbenchColumnHead({
       resizeStartX.current = event.clientX;
       resizeStartWidth.current = width;
 
-      const handlePointerMove = (moveEvent: PointerEvent) => {
+      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
         const delta = moveEvent.clientX - resizeStartX.current;
         onResize(column, resizeStartWidth.current + delta);
       };
