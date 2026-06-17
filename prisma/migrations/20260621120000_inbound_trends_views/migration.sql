@@ -24,8 +24,9 @@ GROUP BY 1, 2, 3;
 
 DROP VIEW IF EXISTS inbound_trends_row_v;
 DROP VIEW IF EXISTS inbound_workbench_display_v;
+DROP VIEW IF EXISTS inbound_workbench_v;
 
-CREATE OR REPLACE VIEW inbound_workbench_v AS
+CREATE VIEW inbound_workbench_v AS
 WITH template_snapshot AS (
   SELECT
     coupang_seller_account_id,
@@ -110,7 +111,7 @@ LEFT JOIN shopling_latest s
   AND TRIM(t.product_barcode) <> ''
   AND t.product_barcode = s.barcode;
 
-CREATE OR REPLACE VIEW inbound_workbench_display_v AS
+CREATE VIEW inbound_workbench_display_v AS
 SELECT
   v.*,
   COALESCE(o.safety_stock, 0) AS safety_stock,
@@ -141,7 +142,7 @@ LEFT JOIN inbound_actual_packed_v ap
   AND TRIM(v.product_barcode) <> ''
   AND TRIM(v.product_barcode) = ap.product_barcode;
 
-CREATE OR REPLACE VIEW inbound_trends_row_v AS
+CREATE VIEW inbound_trends_row_v AS
 SELECT
   coupang_seller_account_id,
   shopling_row_key,
