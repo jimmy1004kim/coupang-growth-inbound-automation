@@ -9,6 +9,7 @@ import {
 } from "@/components/inbound-workbench/inbound-workbench-table";
 import { buildWorkbenchQuery } from "@/components/inbound-workbench/build-workbench-query";
 import { InboundWorkbenchToolbar } from "@/components/inbound-workbench/inbound-workbench-toolbar";
+import { useInboundWorkbenchColumnLayout } from "@/components/inbound-workbench/use-inbound-workbench-column-layout";
 import { apiPatch } from "@/lib/api-client";
 import type { SellerAccountView } from "@/services/coupang-seller-accounts/types";
 import type {
@@ -21,6 +22,7 @@ import {
   parseInboundWorkbenchSort,
   type InboundWorkbenchSortColumn,
 } from "@/services/inbound-workbench/inbound-workbench-sort";
+import type { InboundWorkbenchColumnLayout } from "@/services/inbound-workbench/inbound-workbench-column-layout";
 
 type DraftEntry = InboundWorkbenchDraftEntry & {
   optionId: string | null;
@@ -39,6 +41,7 @@ type InboundWorkbenchPanelClientProps = {
   pageSize: number;
   sort: string | null;
   dir: string | null;
+  columnLayout: InboundWorkbenchColumnLayout;
   children: ReactNode;
 };
 
@@ -73,6 +76,7 @@ export function InboundWorkbenchPanelClient({
   pageSize,
   sort,
   dir,
+  columnLayout,
   children,
 }: InboundWorkbenchPanelClientProps) {
   const router = useRouter();
@@ -82,6 +86,16 @@ export function InboundWorkbenchPanelClient({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const parsedSort = parseInboundWorkbenchSort(sort ?? undefined, dir ?? undefined);
+  const {
+    columnOrder,
+    getColumnWidth,
+    reorderColumn,
+    resizeColumn,
+    resetLayout,
+  } = useInboundWorkbenchColumnLayout({
+    initialLayout: columnLayout,
+    disabled: editMode,
+  });
 
   const canEdit = data.totalCount > 0 && Boolean(sellerId);
 
@@ -239,6 +253,7 @@ export function InboundWorkbenchPanelClient({
         onEdit={startEdit}
         onCancel={cancelEdit}
         onSave={() => void saveEdits()}
+        onResetColumns={resetLayout}
       />
       {saveError ? (
         <p className="text-sm text-destructive">{saveError}</p>
@@ -246,6 +261,10 @@ export function InboundWorkbenchPanelClient({
       {data.totalCount > 0 ? (
         <InboundWorkbenchTable
           rows={displayRows}
+          columnOrder={columnOrder}
+          getColumnWidth={getColumnWidth}
+          onReorderColumn={reorderColumn}
+          onResizeColumn={resizeColumn}
           editMode={editMode}
           sort={parsedSort.sort}
           dir={parsedSort.dir}

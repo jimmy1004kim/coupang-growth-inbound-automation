@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { InboundWorkbenchPanelClient } from "@/components/inbound-workbench/inbound-workbench-panel-client";
 import type { SellerAccountView } from "@/services/coupang-seller-accounts/types";
 import type { ListInboundWorkbenchResult } from "@/services/inbound-workbench/types";
+import type { InboundWorkbenchColumnLayout } from "@/services/inbound-workbench/inbound-workbench-column-layout";
 
 type InboundWorkbenchPanelProps = {
   accounts: SellerAccountView[];
@@ -14,6 +15,7 @@ type InboundWorkbenchPanelProps = {
   pageSize: number;
   sort: string | null;
   dir: string | null;
+  columnLayout: InboundWorkbenchColumnLayout;
 };
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -33,6 +35,7 @@ export function InboundWorkbenchPanel({
   pageSize,
   sort,
   dir,
+  columnLayout,
 }: InboundWorkbenchPanelProps) {
   const hasAccounts = accounts.some((account) => account.isActive);
   const isSearchEmpty = search.trim().length === 0;
@@ -107,6 +110,7 @@ export function InboundWorkbenchPanel({
       pageSize={pageSize}
       sort={sort}
       dir={dir}
+      columnLayout={columnLayout}
     >
       {emptyContent}
     </InboundWorkbenchPanelClient>

@@ -31,6 +31,7 @@ type InboundWorkbenchToolbarProps = {
   onEdit?: () => void;
   onCancel?: () => void;
   onSave?: () => void;
+  onResetColumns?: () => void;
 };
 
 function formatSnapshotLine(dates: InboundWorkbenchSnapshotDates | null): string {
@@ -67,6 +68,7 @@ export function InboundWorkbenchToolbar({
   onEdit,
   onCancel,
   onSave,
+  onResetColumns,
 }: InboundWorkbenchToolbarProps) {
   const router = useRouter();
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -117,6 +119,15 @@ export function InboundWorkbenchToolbar({
         </form>
 
         <div className="flex shrink-0 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={editMode || !onResetColumns}
+            onClick={onResetColumns}
+          >
+            열 초기화
+          </Button>
           {!editMode ? (
             <Button
               type="button"

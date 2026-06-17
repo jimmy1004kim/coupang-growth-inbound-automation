@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth/profile";
 import { resolveSellerAccountId } from "@/services/coupang-seller-accounts/get-default-seller-account-id";
 import { listSellerAccounts } from "@/services/coupang-seller-accounts/list-seller-accounts";
 import { listInboundWorkbench } from "@/services/inbound-workbench/list-inbound-workbench";
+import { getInboundWorkbenchColumnLayout } from "@/services/inbound-workbench/persist-inbound-workbench-column-layout";
 import {
   EMPTY_INBOUND_WORKBENCH_RESULT,
   normalizeInboundWorkbenchPageSize,
@@ -22,7 +23,7 @@ type DashboardPageProps = {
 export default async function DashboardPage({
   searchParams,
 }: DashboardPageProps) {
-  await requireProfile();
+  const profile = await requireProfile();
 
   const params = await searchParams;
   const accounts = await listSellerAccounts();
@@ -42,6 +43,8 @@ export default async function DashboardPage({
       })
     : EMPTY_INBOUND_WORKBENCH_RESULT;
 
+  const columnLayout = await getInboundWorkbenchColumnLayout(profile.id);
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -60,6 +63,7 @@ export default async function DashboardPage({
         pageSize={pageSize}
         sort={params.sort ?? null}
         dir={params.dir ?? null}
+        columnLayout={columnLayout}
       />
     </div>
   );
