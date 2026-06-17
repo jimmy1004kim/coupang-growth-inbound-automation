@@ -1,6 +1,11 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import {
+  buildSellerInClause,
+  buildWorkbenchCoreQueryPrefix,
+} from "@/services/inbound-workbench/inbound-workbench-query-sql";
+import { resolveWorkbenchQueryContext } from "@/services/inbound-workbench/resolve-workbench-query-context";
+import {
   INVENTORY_HEALTH_ALL_SELLERS,
   isInventoryHealthAllSellers,
   type InventoryHealthSellerFilter,
@@ -33,6 +38,7 @@ type RawInventoryHealthRow = {
   offer_condition: string | null;
   days_of_cover: string | null;
   health_snapshot_date: Date;
+  total_count: bigint;
 };
 
 function formatSnapshotDate(value: Date): string {
@@ -76,12 +82,19 @@ function buildSearchCondition(search?: string) {
   )`;
 }
 
-function buildSellerCondition(sellerFilter: InventoryHealthSellerFilter) {
-  if (isInventoryHealthAllSellers(sellerFilter)) {
-    return Prisma.sql`a."isActive" = true`;
+async function resolveSellerIdsForQuery(
+  sellerFilter: InventoryHealthSellerFilter,
+): Promise<string[]> {
+  if (!isInventoryHealthAllSellers(sellerFilter)) {
+    return [sellerFilter];
   }
 
-  return Prisma.sql`v.coupang_seller_account_id = ${sellerFilter}`;
+  const accounts = await prisma.coupangSellerAccount.findMany({
+    where: { isActive: true },
+    select: { id: true },
+  });
+
+  return accounts.map((account) => account.id);
 }
 
 function buildOrderBy(sellerFilter: InventoryHealthSellerFilter) {
@@ -105,9 +118,31 @@ export async function listInventoryHealth(
   const pageSize = normalizeInventoryHealthPageSize(options.pageSize);
   const sellerFilter = options.sellerFilter;
   const isAllSellers = isInventoryHealthAllSellers(sellerFilter);
+  const sellerIds = await resolveSellerIdsForQuery(sellerFilter);
+
+  if (sellerIds.length === 0) {
+    return {
+      snapshotDate: null,
+      isAllSellers,
+      hasHealthData: false,
+      totalCount: 0,
+      rows: [],
+    };
+  }
+
   const searchCondition = buildSearchCondition(options.search);
-  const sellerCondition = buildSellerCondition(sellerFilter);
   const orderBy = buildOrderBy(sellerFilter);
+  const queryContext = await resolveWorkbenchQueryContext(sellerIds);
+
+  if (!queryContext) {
+    return {
+      snapshotDate: null,
+      isAllSellers,
+      hasHealthData: false,
+      totalCount: 0,
+      rows: [],
+    };
+  }
 
   const healthSnapshot = await prisma.coupangGrowthInventoryHealth.aggregate({
     where: isAllSellers
@@ -130,23 +165,13 @@ export async function listInventoryHealth(
     ? null
     : formatSnapshotDate(healthSnapshot._max.snapshotDate);
 
-  const baseFrom = Prisma.sql`
-    FROM inbound_workbench_v v
-    INNER JOIN "CoupangSellerAccount" a
-      ON v.coupang_seller_account_id = a.id
-    WHERE ${sellerCondition}
-    ${searchCondition}
-  `;
+  const queryPrefix = buildWorkbenchCoreQueryPrefix(queryContext);
+  const sellerIn = buildSellerInClause(sellerIds);
 
-  const [countResult, rows] = await Promise.all([
-    prisma.$queryRaw<[{ count: bigint }]>(
-      Prisma.sql`
-        SELECT COUNT(*)::bigint AS count
-        ${baseFrom}
-      `,
-    ),
-    prisma.$queryRaw<RawInventoryHealthRow[]>(
-      Prisma.sql`
+  const rows = await prisma.$queryRaw<RawInventoryHealthRow[]>(
+    Prisma.sql`
+      ${queryPrefix},
+      filtered AS (
         SELECT
           a."displayName" AS seller_display_name,
           v.option_id,
@@ -162,19 +187,36 @@ export async function listInventoryHealth(
           v.offer_condition,
           v.days_of_cover,
           v.health_snapshot_date
-        ${baseFrom}
+        FROM workbench_core v
+        INNER JOIN "CoupangSellerAccount" a
+          ON v.coupang_seller_account_id = a.id
+        WHERE v.coupang_seller_account_id IN (${sellerIn})
+        ${searchCondition}
         ${orderBy}
         LIMIT ${pageSize}
         OFFSET ${(page - 1) * pageSize}
-      `,
-    ),
-  ]);
+      ),
+      total_count AS (
+        SELECT COUNT(*)::bigint AS count
+        FROM workbench_core v
+        INNER JOIN "CoupangSellerAccount" a
+          ON v.coupang_seller_account_id = a.id
+        WHERE v.coupang_seller_account_id IN (${sellerIn})
+        ${searchCondition}
+      )
+      SELECT
+        filtered.*,
+        total_count.count AS total_count
+      FROM filtered
+      CROSS JOIN total_count
+    `,
+  );
 
   return {
     snapshotDate,
     isAllSellers,
     hasHealthData: true,
-    totalCount: Number(countResult[0]?.count ?? 0),
+    totalCount: Number(rows[0]?.total_count ?? 0),
     rows: rows.map(mapRow),
   };
 }

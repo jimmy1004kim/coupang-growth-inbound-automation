@@ -1,17 +1,22 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import {
+  buildInboundWorkbenchOrderBy,
+} from "@/services/inbound-workbench/build-inbound-workbench-order-by";
+import {
+  buildSellerInClause,
+  buildWorkbenchDisplayQueryPrefix,
+} from "@/services/inbound-workbench/inbound-workbench-query-sql";
+import {
+  parseInboundWorkbenchSort,
+} from "@/services/inbound-workbench/inbound-workbench-sort";
+import { resolveWorkbenchQueryContext } from "@/services/inbound-workbench/resolve-workbench-query-context";
 import type {
   InboundWorkbenchRowView,
   InboundWorkbenchSnapshotDates,
   ListInboundWorkbenchResult,
 } from "@/services/inbound-workbench/types";
 import { normalizeInboundWorkbenchPageSize } from "@/services/inbound-workbench/types";
-import {
-  buildInboundWorkbenchOrderBy,
-} from "@/services/inbound-workbench/build-inbound-workbench-order-by";
-import {
-  parseInboundWorkbenchSort,
-} from "@/services/inbound-workbench/inbound-workbench-sort";
 
 type ListInboundWorkbenchOptions = {
   coupangSellerAccountIds: string[];
@@ -56,6 +61,7 @@ type RawWorkbenchRow = {
   template_snapshot_date: Date;
   health_snapshot_date: Date | null;
   shopling_snapshot_date: Date | null;
+  total_count: bigint;
 };
 
 function formatSnapshotDate(value: Date): string {
@@ -154,10 +160,6 @@ function buildSearchCondition(search?: string) {
   )`;
 }
 
-function buildSellerInClause(sellerIds: string[]) {
-  return Prisma.join(sellerIds.map((id) => Prisma.sql`${id}`));
-}
-
 export async function listInboundWorkbench(
   options: ListInboundWorkbenchOptions,
 ): Promise<ListInboundWorkbenchResult> {
@@ -176,11 +178,9 @@ export async function listInboundWorkbench(
   const searchCondition = buildSearchCondition(options.search);
   const { sort, dir } = parseInboundWorkbenchSort(options.sort, options.dir);
   const orderBy = buildInboundWorkbenchOrderBy(sort, dir);
-  const sellerInClause = buildSellerInClause(sellerIds);
+  const queryContext = await resolveWorkbenchQueryContext(sellerIds);
 
-  const snapshotDates = await fetchSnapshotDates(sellerIds[0]!);
-
-  if (!snapshotDates) {
+  if (!queryContext) {
     return {
       snapshotDates: null,
       totalCount: 0,
@@ -188,21 +188,14 @@ export async function listInboundWorkbench(
     };
   }
 
-  const baseWhere = Prisma.sql`
-    WHERE d.coupang_seller_account_id IN (${sellerInClause})
-    ${searchCondition}
-  `;
+  const snapshotDates = await fetchSnapshotDates(sellerIds[0]!);
+  const queryPrefix = buildWorkbenchDisplayQueryPrefix(queryContext);
+  const sellerIn = buildSellerInClause(sellerIds);
 
-  const [countResult, rows] = await Promise.all([
-    prisma.$queryRaw<[{ count: bigint }]>(
-      Prisma.sql`
-        SELECT COUNT(*)::bigint AS count
-        FROM inbound_workbench_display_v d
-        ${baseWhere}
-      `,
-    ),
-    prisma.$queryRaw<RawWorkbenchRow[]>(
-      Prisma.sql`
+  const rows = await prisma.$queryRaw<RawWorkbenchRow[]>(
+    Prisma.sql`
+      ${queryPrefix},
+      filtered AS (
         SELECT
           d.coupang_seller_account_id,
           s."displayName" AS seller_display_name,
@@ -224,7 +217,7 @@ export async function listInboundWorkbench(
           d.offer_condition,
           d.days_of_cover,
           d.safety_stock,
-          (o.safety_stock IS NOT NULL) AS has_safety_stock_override,
+          d.has_safety_stock_override,
           d.calculated_growth_inbound_recommend,
           d.growth_inbound_recommend,
           d.actual_packed_qty,
@@ -237,26 +230,32 @@ export async function listInboundWorkbench(
           d.template_snapshot_date,
           d.health_snapshot_date,
           d.shopling_snapshot_date
-        FROM inbound_workbench_display_v d
+        FROM workbench_display d
         JOIN "CoupangSellerAccount" s
           ON s.id = d.coupang_seller_account_id
-        LEFT JOIN inbound_planning_override o
-          ON d.coupang_seller_account_id = o.coupang_seller_account_id
-          AND (
-            (d.option_id IS NOT NULL AND d.option_id = o.option_id)
-            OR (d.option_id IS NULL AND d.template_id = o.template_id)
-          )
-        ${baseWhere}
+        WHERE d.coupang_seller_account_id IN (${sellerIn})
+        ${searchCondition}
         ORDER BY ${orderBy}
         LIMIT ${pageSize}
         OFFSET ${(page - 1) * pageSize}
-      `,
-    ),
-  ]);
+      ),
+      total_count AS (
+        SELECT COUNT(*)::bigint AS count
+        FROM workbench_core d
+        WHERE d.coupang_seller_account_id IN (${sellerIn})
+        ${searchCondition}
+      )
+      SELECT
+        filtered.*,
+        total_count.count AS total_count
+      FROM filtered
+      CROSS JOIN total_count
+    `,
+  );
 
   return {
     snapshotDates,
-    totalCount: Number(countResult[0]?.count ?? 0),
+    totalCount: Number(rows[0]?.total_count ?? 0),
     rows: rows.map(mapRow),
   };
 }

@@ -315,6 +315,7 @@ model ShoplingInventory {
   @@unique([barcode, snapshotDate, goodsKey, optionTitle, optionValue], map: "uq_shopling_inv_barcode_date_goods_opt")
   @@index([barcode], map: "idx_shopling_inv_barcode")
   @@index([snapshotDate], map: "idx_shopling_inv_snapshot_date")
+  @@index([snapshotDate, barcode], map: "idx_shopling_inv_snapshot_barcode")
   @@index([ptnGoodsCd], map: "idx_shopling_inv_ptn_goods_cd")
   @@index([goodsKey], map: "idx_shopling_inv_goods_key")
   @@index([ingestionId], map: "idx_shopling_inv_ingestion_id")
