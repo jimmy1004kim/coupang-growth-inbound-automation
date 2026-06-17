@@ -14,6 +14,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type {
   ShoplingSyncRunResult,
   ShoplingSyncStatus,
@@ -23,6 +31,11 @@ import type {
 type ShoplingSyncPanelProps = {
   initialStatus: ShoplingSyncStatus;
 };
+
+type InventorySyncDialogState =
+  | { open: false }
+  | { open: true; type: "success"; result: ShoplingSyncRunResult }
+  | { open: true; type: "error"; message: string };
 
 function formatYmd(ymd: string): string {
   if (ymd.length !== 8) {
@@ -49,15 +62,13 @@ function formatStoppedReason(reason: ShoplingSyncStoppedReason): string {
 export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<ShoplingSyncRunResult | null>(null);
+  const [dialog, setDialog] = useState<InventorySyncDialogState>({ open: false });
 
   const isDisabled = !initialStatus.hasApiConfig || loading;
   const { syncPolicy } = initialStatus;
 
   async function handleSync() {
-    setError(null);
-    setResult(null);
+    setDialog({ open: false });
     setLoading(true);
 
     const response = await apiPost<ShoplingSyncRunResult>(
@@ -68,11 +79,11 @@ export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
     setLoading(false);
 
     if (!response.ok) {
-      setError(response.error);
+      setDialog({ open: true, type: "error", message: response.error });
       return;
     }
 
-    setResult(response.data);
+    setDialog({ open: true, type: "success", result: response.data });
     router.refresh();
   }
 
@@ -152,76 +163,129 @@ export function ShoplingSyncPanel({ initialStatus }: ShoplingSyncPanelProps) {
           <Button type="button" disabled={isDisabled} onClick={handleSync}>
             {loading ? "샵플링 재고 동기화 중..." : "샵플링 재고 동기화"}
           </Button>
-
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
-          {result ? (
-            <div className="space-y-4 rounded-md border border-border p-4 text-sm">
-              <p className="text-primary">샵플링 재고 동기화가 완료되었습니다.</p>
-              <dl className="grid gap-2 sm:grid-cols-2">
-                <div>
-                  <dt className="text-muted-foreground">조회 기간</dt>
-                  <dd>
-                    {formatYmd(result.oldestStartDt)} ~{" "}
-                    {formatYmd(result.newestEndDt)}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">스냅샷 기준일</dt>
-                  <dd>{formatYmd(result.snapshotDate)}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">처리 청크</dt>
-                  <dd>{result.chunksProcessed}개</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">중단 사유</dt>
-                  <dd>{formatStoppedReason(result.stoppedReason)}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">상품 건수 (합계)</dt>
-                  <dd>{result.fetchedProductCount.toLocaleString()}건</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">적재 행 수 (dedupe 후)</dt>
-                  <dd>{result.rowCount.toLocaleString()}건</dd>
-                </div>
-              </dl>
-
-              {result.chunks.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[28rem] text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-border text-muted-foreground">
-                        <th className="py-2 pr-3 font-medium">청크</th>
-                        <th className="py-2 pr-3 font-medium">기간</th>
-                        <th className="py-2 pr-3 font-medium">상품</th>
-                        <th className="py-2 font-medium">병합 행</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {result.chunks.map((chunk) => (
-                        <tr
-                          key={chunk.chunkIndex}
-                          className="border-b border-border/60"
-                        >
-                          <td className="py-2 pr-3">{chunk.chunkIndex}</td>
-                          <td className="py-2 pr-3">
-                            {formatYmd(chunk.startDt)} ~{" "}
-                            {formatYmd(chunk.endDt)}
-                          </td>
-                          <td className="py-2 pr-3">{chunk.productCount}</td>
-                          <td className="py-2">{chunk.rowsMerged}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={dialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDialog({ open: false });
+          }
+        }}
+      >
+        <DialogContent
+          className={
+            dialog.open && dialog.type === "success" ? "sm:max-w-2xl" : undefined
+          }
+        >
+          {dialog.open && dialog.type === "error" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>샵플링 재고 동기화 실패</DialogTitle>
+                <DialogDescription className="text-destructive">
+                  {dialog.message}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  onClick={() => setDialog({ open: false })}
+                >
+                  확인
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+
+          {dialog.open && dialog.type === "success" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>샵플링 재고 동기화 완료</DialogTitle>
+                <DialogDescription>
+                  조회·적재가 완료되었습니다. 아래 요약을 확인해 주세요.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 text-sm">
+                <dl className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-muted-foreground">조회 기간</dt>
+                    <dd>
+                      {formatYmd(dialog.result.oldestStartDt)} ~{" "}
+                      {formatYmd(dialog.result.newestEndDt)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">스냅샷 기준일</dt>
+                    <dd>{formatYmd(dialog.result.snapshotDate)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">처리 청크</dt>
+                    <dd>{dialog.result.chunksProcessed}개</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">중단 사유</dt>
+                    <dd>{formatStoppedReason(dialog.result.stoppedReason)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">상품 건수 (합계)</dt>
+                    <dd>
+                      {dialog.result.fetchedProductCount.toLocaleString()}건
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">
+                      적재 행 수 (dedupe 후)
+                    </dt>
+                    <dd>{dialog.result.rowCount.toLocaleString()}건</dd>
+                  </div>
+                </dl>
+
+                {dialog.result.chunks.length > 0 ? (
+                  <div className="max-h-64 overflow-x-auto overflow-y-auto rounded-md border border-border">
+                    <table className="w-full min-w-[28rem] text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground">
+                          <th className="px-3 py-2 pr-3 font-medium">청크</th>
+                          <th className="py-2 pr-3 font-medium">기간</th>
+                          <th className="py-2 pr-3 font-medium">상품</th>
+                          <th className="py-2 pr-3 font-medium">병합 행</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dialog.result.chunks.map((chunk) => (
+                          <tr
+                            key={chunk.chunkIndex}
+                            className="border-b border-border/60"
+                          >
+                            <td className="px-3 py-2 pr-3">{chunk.chunkIndex}</td>
+                            <td className="py-2 pr-3">
+                              {formatYmd(chunk.startDt)} ~{" "}
+                              {formatYmd(chunk.endDt)}
+                            </td>
+                            <td className="py-2 pr-3">{chunk.productCount}</td>
+                            <td className="py-2 pr-3">{chunk.rowsMerged}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  onClick={() => setDialog({ open: false })}
+                >
+                  확인
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <ShoplingPackageMappingSyncCard
         hasApiConfig={initialStatus.hasApiConfig}
