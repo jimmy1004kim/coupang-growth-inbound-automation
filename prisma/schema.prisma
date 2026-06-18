@@ -534,3 +534,31 @@ model ShoplingWmsSession {
 
   @@map("shopling_wms_session")
 }
+
+enum TelegramBoxListUploadStatus {
+  processing
+  completed
+  failed
+}
+
+/// 텔레그램 그룹 사진 OCR → 박스리스트 엑셀 저장 이력
+model TelegramBoxListUpload {
+  id                String                      @id @default(cuid())
+  storagePath       String?                     @map("storage_path")
+  outputFileName    String                      @map("output_file_name")
+  telegramChatId    String                      @map("telegram_chat_id")
+  telegramMessageId BigInt                      @map("telegram_message_id")
+  telegramUpdateId  BigInt                      @unique @map("telegram_update_id")
+  telegramUserName  String?                     @map("telegram_user_name")
+  telegramCaption     String?                     @map("telegram_caption")
+  rowCount          Int                         @default(0) @map("row_count")
+  imageCount        Int                         @default(1) @map("image_count")
+  status            TelegramBoxListUploadStatus @default(processing)
+  errorMessage      String?                     @map("error_message")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+  completedAt       DateTime?                   @map("completed_at")
+
+  @@index([createdAt], map: "idx_telegram_box_list_upload_created_at")
+  @@index([status, createdAt], map: "idx_telegram_box_list_upload_status_at")
+  @@map("telegram_box_list_upload")
+}

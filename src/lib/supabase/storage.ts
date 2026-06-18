@@ -25,6 +25,10 @@ export function getCoupangInboundDeliverableStoragePath(deliverableId: string) {
   return `coupang-inbound-deliverables/${deliverableId}/inbound-template.xlsx`;
 }
 
+export function getTelegramBoxListStoragePath(uploadId: string) {
+  return `telegram-box-list/${uploadId}/box-list.xlsx`;
+}
+
 export async function uploadExcelFile(
   path: string,
   buffer: Buffer,

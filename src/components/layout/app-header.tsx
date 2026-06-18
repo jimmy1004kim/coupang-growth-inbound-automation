@@ -60,6 +60,7 @@ function getNavContext(pathname: string): NavContext {
   if (mainItem) {
     if (
       isNavItemActive(pathname, "/downloads") ||
+      isNavItemActive(pathname, "/automation") ||
       isNavItemActive(pathname, "/board")
     ) {
       if (isNavItemActive(pathname, "/board")) {
