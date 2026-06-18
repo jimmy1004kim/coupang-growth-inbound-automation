@@ -272,13 +272,13 @@ export function CoupangInboundTemplateSection({
       formData.append("seller", sellerId);
       formData.append("boxListFile", excelFile);
 
-      const response = await fetch("/api/inbound-records", {
+      const response = await fetch("/api/coupang-inbound-deliverables", {
         method: "POST",
         body: formData,
       });
 
       const payload = (await response.json().catch(() => null)) as
-        | { ok: true; data: { recordedCount: number } }
+        | { ok: true; data: { recordedCount: number; deliverableId: string } }
         | { ok: false; error?: string }
         | null;
 

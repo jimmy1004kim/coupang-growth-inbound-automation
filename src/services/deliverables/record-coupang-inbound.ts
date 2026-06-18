@@ -1,22 +1,16 @@
 import { aggregateMatchedInboundItems } from "@/lib/deliverables/aggregate-matched-inbound-items";
+import { buildCoupangInboundTemplateFilename } from "@/lib/excel/generators/filter-inbound-template";
 import { prisma } from "@/lib/db";
+import {
+  buildCoupangInboundDeliverableItemCreates,
+  buildCoupangInboundRecordCreates,
+} from "@/services/deliverables/build-coupang-inbound-deliverable-items";
 import { generateCoupangInboundTemplate } from "@/services/deliverables/generate-coupang-inbound-template";
+import { saveCoupangInboundDeliverableFile } from "@/services/deliverables/save-coupang-inbound-deliverable-file";
 import type {
   RecordCoupangInboundInput,
   RecordCoupangInboundResult,
 } from "@/services/deliverables/types";
-
-function parseCoupangOptionId(value: string | null): bigint | null {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-}
 
 export async function recordCoupangInbound(
   input: RecordCoupangInboundInput,
@@ -32,21 +26,53 @@ export async function recordCoupangInbound(
     throw new Error("기록할 입고 수량이 없습니다.");
   }
 
-  const batchId = crypto.randomUUID();
+  const deliverableId = crypto.randomUUID();
+  const outputFileName = buildCoupangInboundTemplateFilename(
+    generated.stats.source,
+  );
 
-  await prisma.coupangInboundRecord.createMany({
-    data: aggregated.map((item) => ({
-      coupangSellerAccountId: input.coupangSellerAccountId,
-      productBarcode: item.productBarcode,
-      coupangOptionId: parseCoupangOptionId(item.coupangOptionId),
-      quantity: item.quantity,
-      recordedById: input.recordedById,
-      batchId,
-    })),
+  const storagePath = await saveCoupangInboundDeliverableFile({
+    deliverableId,
+    buffer: generated.buffer,
+  });
+
+  const itemCreates = buildCoupangInboundDeliverableItemCreates(
+    deliverableId,
+    aggregated,
+  );
+  const recordCreates = buildCoupangInboundRecordCreates(
+    deliverableId,
+    input.coupangSellerAccountId,
+    input.recordedById,
+    aggregated,
+  );
+
+  await prisma.$transaction(async (tx) => {
+    await tx.coupangInboundDeliverable.create({
+      data: {
+        id: deliverableId,
+        coupangSellerAccountId: input.coupangSellerAccountId,
+        storagePath,
+        outputFileName,
+        sourceFileName: input.sourceFileName?.trim() || null,
+        matchedCount: generated.stats.matched,
+        unmatchedCount: generated.stats.unmatched.length,
+        recordedById: input.recordedById,
+      },
+    });
+
+    await tx.coupangInboundDeliverableItem.createMany({
+      data: itemCreates,
+    });
+
+    await tx.coupangInboundRecord.createMany({
+      data: recordCreates,
+    });
   });
 
   return {
-    batchId,
+    deliverableId,
+    batchId: deliverableId,
     recordedCount: aggregated.length,
     matchedBarcodeCount: aggregated.length,
   };

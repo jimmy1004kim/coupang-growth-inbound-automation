@@ -42,6 +42,7 @@ model Profile {
   shoplingApiConfigUpdates ShoplingApiConfig[]
   inboundPlanningOverrides InboundPlanningOverride[]
   coupangInboundRecords         CoupangInboundRecord[]
+  coupangInboundDeliverables    CoupangInboundDeliverable[]
   shoplingInboundDeliverables    ShoplingInboundDeliverable[]
   warehouseInboundDeliverables   WarehouseInboundDeliverable[]
   shoplingWmsSession             ShoplingWmsSession?
@@ -74,6 +75,7 @@ model CoupangSellerAccount {
   inventoryHealthRows      CoupangGrowthInventoryHealth[]
   inboundPlanningOverrides InboundPlanningOverride[]
   coupangInboundRecords         CoupangInboundRecord[]
+  coupangInboundDeliverables    CoupangInboundDeliverable[]
   warehouseInboundDeliverables  WarehouseInboundDeliverable[]
 
   @@index([createdById])
@@ -393,6 +395,42 @@ model CoupangInboundRecord {
   @@index([coupangSellerAccountId, productBarcode, recordedAt], map: "idx_inbound_record_seller_barcode_at")
   @@index([batchId], map: "idx_inbound_record_batch_id")
   @@map("coupang_inbound_record")
+}
+
+/// 쿠팡그로스 입고 템플릿 기록 배치 (생성된 WING 입고 템플릿 1건 = 1행)
+model CoupangInboundDeliverable {
+  id                     String   @id @default(cuid())
+  coupangSellerAccountId String   @map("coupang_seller_account_id")
+  storagePath            String   @map("storage_path")
+  outputFileName         String   @map("output_file_name")
+  sourceFileName         String?  @map("source_file_name")
+  matchedCount           Int      @default(0) @map("matched_count")
+  unmatchedCount         Int      @default(0) @map("unmatched_count")
+  recordedById           String   @map("recorded_by_id")
+  recordedAt             DateTime @default(now()) @map("recorded_at")
+
+  coupangSellerAccount CoupangSellerAccount             @relation(fields: [coupangSellerAccountId], references: [id], onDelete: Restrict)
+  recordedBy           Profile                          @relation(fields: [recordedById], references: [id], onDelete: Restrict)
+  items                CoupangInboundDeliverableItem[]
+
+  @@index([coupangSellerAccountId, recordedAt], map: "idx_coupang_inbound_deliverable_seller_at")
+  @@index([recordedById, recordedAt], map: "idx_coupang_inbound_deliverable_by_at")
+  @@map("coupang_inbound_deliverable")
+}
+
+/// 쿠팡그로스 입고 템플릿 기록 바코드별 수량
+model CoupangInboundDeliverableItem {
+  id              String   @id @default(cuid())
+  deliverableId   String   @map("deliverable_id")
+  productBarcode  String   @map("product_barcode")
+  coupangOptionId BigInt?  @map("coupang_option_id")
+  quantity        Int
+
+  deliverable CoupangInboundDeliverable @relation(fields: [deliverableId], references: [id], onDelete: Cascade)
+
+  @@index([deliverableId], map: "idx_coupang_inbound_deliverable_item_deliverable")
+  @@index([productBarcode], map: "idx_coupang_inbound_deliverable_item_barcode")
+  @@map("coupang_inbound_deliverable_item")
 }
 
 /// 샵플링 입고 기록 배치 (생성된 WMS 엑셀 1건 = 1행)

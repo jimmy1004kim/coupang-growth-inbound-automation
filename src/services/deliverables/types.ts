@@ -51,9 +51,11 @@ export type RecordCoupangInboundInput = {
   recordedById: string;
   templateBuffer: Buffer;
   boxListInput: import("@/lib/excel/generators/filter-inbound-template").BoxListInput;
+  sourceFileName?: string | null;
 };
 
 export type RecordCoupangInboundResult = {
+  deliverableId: string;
   batchId: string;
   recordedCount: number;
   matchedBarcodeCount: number;
@@ -238,5 +240,42 @@ export type ShoplingInboundDeliverableFile = {
 };
 
 export type ShoplingInboundDeliverableServiceResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
+export type CoupangInboundDeliverableItemView = {
+  productBarcode: string;
+  coupangOptionId: string | null;
+  quantity: number;
+};
+
+export type CoupangInboundDeliverableListItem = {
+  id: string;
+  outputFileName: string;
+  sourceFileName: string | null;
+  sellerDisplayName: string;
+  recordedAt: string;
+  recordedByName: string | null;
+  matchedCount: number;
+  unmatchedCount: number;
+  itemCount: number;
+  totalQuantity: number;
+  items: CoupangInboundDeliverableItemView[];
+};
+
+export type ListCoupangInboundDeliverablesResult = {
+  rowCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  rows: CoupangInboundDeliverableListItem[];
+};
+
+export type CoupangInboundDeliverableFile = {
+  outputFileName: string;
+  buffer: Buffer;
+};
+
+export type CoupangInboundDeliverableServiceResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string };

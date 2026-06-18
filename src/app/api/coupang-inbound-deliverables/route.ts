@@ -3,7 +3,35 @@ import { resolveActiveSellerAccount } from "@/lib/api/download-helpers";
 import { logRouteError } from "@/lib/api/log-route-error";
 import { jsonError, jsonSuccess } from "@/lib/api/response";
 import { getLatestInboundTemplateFile } from "@/services/coupang-growth-sync/get-latest-inbound-template-file";
+import { listCoupangInboundDeliverables } from "@/services/deliverables/list-coupang-inbound-deliverables";
 import { recordCoupangInbound } from "@/services/deliverables/record-coupang-inbound";
+
+export const runtime = "nodejs";
+
+export async function GET(request: Request) {
+  try {
+    const auth = await requireApiProfile();
+
+    if ("response" in auth) {
+      return auth.response;
+    }
+
+    const url = new URL(request.url);
+    const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
+    const pageSize = Number(url.searchParams.get("pageSize")) || undefined;
+
+    const result = await listCoupangInboundDeliverables({ page, pageSize });
+
+    return jsonSuccess(result);
+  } catch (error) {
+    logRouteError(error, {
+      route: "/api/coupang-inbound-deliverables",
+      method: "GET",
+    });
+
+    return jsonError("쿠팡그로스 입고리스트 기록 목록 조회에 실패했습니다.", 500);
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -56,13 +84,13 @@ export async function POST(request: Request) {
     return jsonSuccess(result);
   } catch (error) {
     logRouteError(error, {
-      route: "/api/inbound-records",
+      route: "/api/coupang-inbound-deliverables",
       method: "POST",
     });
 
     const message =
       error instanceof Error ? error.message : "입고 기록에 실패했습니다.";
 
-    return jsonError(message, 500);
+    return jsonError(message, message.includes("판매자") ? 400 : 500);
   }
 }
