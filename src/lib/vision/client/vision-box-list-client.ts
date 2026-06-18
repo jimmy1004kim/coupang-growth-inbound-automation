@@ -1,31 +1,22 @@
-import * as XLSX from "xlsx";
-
-import { convertVisionDataToBoxItems } from "@/lib/vision/convert-vision-to-box-items";
+import {
+  BOX_LIST_EXCEL_CONTENT_TYPE,
+  buildBoxListExcelBytes,
+  buildBoxListExcelFilename,
+} from "@/lib/vision/build-box-list-excel-buffer";
 import type { VisionExtractedData } from "@/lib/vision/types";
 
 export function buildBoxListExcelFile(
   visionData: VisionExtractedData,
   filename = "box-list-from-image.xlsx",
 ): File {
-  const { items } = convertVisionDataToBoxItems(visionData);
+  const bytes = buildBoxListExcelBytes(visionData);
 
-  const rows = items.map((item) => ({
-    바코드: item.barcode,
-    수량: item.quantity,
-    ...(item.productName ? { 등록상품명: item.productName } : {}),
-    ...(item.optionName ? { 옵션: item.optionName } : {}),
-    ...(item.location ? { location: item.location } : {}),
-  }));
-
-  const worksheet = XLSX.utils.json_to_sheet(rows);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
-  const buffer = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
-
-  return new File([buffer], filename, {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  return new File([Uint8Array.from(bytes)], filename, {
+    type: BOX_LIST_EXCEL_CONTENT_TYPE,
   });
 }
+
+export { buildBoxListExcelFilename };
 
 export async function extractVisionDataFromImages(
   imageFiles: File[],

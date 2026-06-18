@@ -1,9 +1,10 @@
-import { ShoplingNegativeStockSection } from "@/components/automation/shopling-negative-stock-section";
+import { redirect } from "next/navigation";
+
+import {
+  automationTabGroup,
+  getDefaultTabHref,
+} from "@/config/page-tabs";
 
 export default function AutomationPage() {
-  return (
-    <div className="space-y-6">
-      <ShoplingNegativeStockSection />
-    </div>
-  );
+  redirect(getDefaultTabHref(automationTabGroup));
 }

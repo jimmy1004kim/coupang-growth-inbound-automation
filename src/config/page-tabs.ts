@@ -88,6 +88,21 @@ export const shoplingDataTabGroup: PageTabGroup = {
   ],
 };
 
+export const automationTabGroup: PageTabGroup = {
+  id: "automation",
+  basePath: "/automation",
+  tabs: [
+    {
+      title: "재고 음수빼기",
+      href: "/automation/shopling-negative-stock",
+    },
+    {
+      title: "텔레그램",
+      href: "/automation/telegram",
+    },
+  ],
+};
+
 export const deliverablesTabGroup: PageTabGroup = {
   id: "deliverables",
   basePath: "/downloads",
@@ -150,6 +165,7 @@ export const pageTabGroups: PageTabGroup[] = [
   shoplingDataTabGroup,
   coupangGrowthSyncTabGroup,
   integrationsTabGroup,
+  automationTabGroup,
   deliverablesTabGroup,
   boardWorkflowTabGroup,
   boardCategoryTabGroup,

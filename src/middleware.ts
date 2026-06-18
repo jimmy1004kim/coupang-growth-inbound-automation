@@ -20,6 +20,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (request.nextUrl.pathname === "/api/telegram/webhook") {
+    return NextResponse.next();
+  }
+
   const { url, anonKey } = getSupabaseEnv();
 
   let supabaseResponse = NextResponse.next({ request });
