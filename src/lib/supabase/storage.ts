@@ -20,6 +20,11 @@ export function getWarehouseInboundDeliverableStoragePath(
   return `warehouse-inbound-deliverables/${deliverableId}/inbound-list.xlsx`;
 }
 
+export function getCoupangInboundDeliverableStoragePath(deliverableId: string) {
+  // Supabase object keys must be ASCII-safe; user-facing filename is stored in DB.
+  return `coupang-inbound-deliverables/${deliverableId}/inbound-template.xlsx`;
+}
+
 export async function uploadExcelFile(
   path: string,
   buffer: Buffer,

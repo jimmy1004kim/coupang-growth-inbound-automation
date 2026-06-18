@@ -18,6 +18,10 @@ export const dashboardTabGroup: PageTabGroup = {
       href: "/data/dashboard/warehouse-inbound",
     },
     {
+      title: "쿠팡그로스 입고리스트",
+      href: "/data/dashboard/coupang-inbound",
+    },
+    {
       title: "샵플링 입고",
       href: "/data/dashboard/shopling-inbound",
     },
