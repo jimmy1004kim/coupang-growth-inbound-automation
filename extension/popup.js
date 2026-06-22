@@ -1,5 +1,5 @@
-const APP_URL = "https://coupang-growth-inbound-automation.vercel.app";
-const APP_HOST = "coupang-growth-inbound-automation.vercel.app";
+const APP_URL = "https://mida-international-inbound-automation.vercel.app";
+const APP_HOST = "mida-international-inbound-automation.vercel.app";
 
 const statusEl = document.getElementById("status");
 const btn = document.getElementById("send");
